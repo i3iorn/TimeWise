@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-import exceptions
+from src import exceptions
 
 import custom_logging
 from database.sqlite import SQLite
@@ -44,6 +44,15 @@ def verify_secrets_access():
         raise exceptions.SecretsAccessError("Secrets access failed") from e
 
 
+def setup_directories():
+    logger.info("Setting up directories")
+    # Verify that the required directories are present
+    try:
+        Path(os.environ["DB_HOST"]).mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        raise exceptions.ConfigurationError("Directory setup failed") from e
+
+
 def setup():
     # Read environment variables
     load_evironment_variables()
@@ -55,19 +64,7 @@ def setup():
     setup_database()
 
     # Verify that the required directories are present
-    # setup_directories()
-
-    # Verify that the required files are present
-    # setup_files()
-
-    # Verify that the required environment variables are set
-    # setup_environment_variables()
-
-    # Verify that the required services are running
-    # setup_services()
-
-    # Verify that the required packages are installed
-    # setup_packages()
+    setup_directories()
 
 
 def main():

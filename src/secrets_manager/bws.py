@@ -27,7 +27,7 @@ class BWS:
             self,
             project_name: str = None,
             bws_access_token: str = None,
-            bws_path: str = "bws"
+            bws_path: str = None
     ):
         """
         Initializes the BWS class with project details and configurations.
@@ -38,7 +38,7 @@ class BWS:
             bws_path (str, optional): Path to the Bitwarden CLI executable. Defaults to 'bws'.
         """
         self.project_name = project_name or os.getenv('BWS_PROJECT_NAME')
-        self.bws_application_path = Path(bws_path or os.getenv('BWS_APPLICATION_PATH', 'bws'))
+        self.bws_application_path = bws_path or os.getenv('BWS_APPLICATION_PATH')
         self.access_token = self._set_access_token(bws_access_token or os.getenv('BWS_ACCESS_TOKEN'))
         self.project_id = self._fetch_project_id()
         self.secrets_cache = {}

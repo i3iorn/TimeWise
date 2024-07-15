@@ -24,3 +24,7 @@ class SecretsAccessError(SecretsError):
 
 class EnvironmentVariableError(ApplicationError):
     pass
+
+
+class DatabaseSetupError(DatabaseError):
+    pass

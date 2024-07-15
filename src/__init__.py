@@ -4,7 +4,7 @@ from pathlib import Path
 import exceptions
 
 import custom_logging
-
+from database.sqlite import SQLite
 from secrets_manager import SecretsManager
 
 logger = custom_logging.get_logger(name="main")
@@ -16,8 +16,12 @@ def load_evironment_variables():
     try:
         with open(Path(__file__).parent.parent.joinpath(".env"), "r") as f:
             for line in f:
+                if line.startswith("#") or not line.strip():
+                    continue
+
                 key, value = line.strip().split("=", 1)
                 os.environ[key] = value
+
     except Exception as e:
         raise exceptions.EnvironmentVariableError("Environment variable loading failed") from e
 
@@ -25,6 +29,10 @@ def load_evironment_variables():
 def setup_database():
     logger.info("Setting up database")
     # Verify that the database is setup
+    try:
+        SQLite(os.environ["DB_HOST"]).connect()
+    except Exception as e:
+        raise exceptions.DatabaseSetupError("Database setup failed") from e
 
 
 def verify_secrets_access():

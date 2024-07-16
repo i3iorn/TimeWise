@@ -1,8 +1,9 @@
 import os
 import sqlite3
 
-from src.database.query_builder import Select, Insert, Update, Delete, CreateTable, CreateView
+from multiprocessing import Lock
 
+from src.database.query_builder import Select, Insert, Update, Delete, CreateTable, Query
 
 __all__ = ["Engine"]
 
@@ -10,6 +11,7 @@ __all__ = ["Engine"]
 class Engine:
     def __init__(self):
         self.connection, self.cursor = self.connect()
+        self.lock = Lock()
 
     # Connection management
     def connect(self):
@@ -20,7 +22,8 @@ class Engine:
         self.connection.close()
 
     def __enter__(self):
-        self.connect()
+        if not self.connection:
+            self.connection, self.cursor = self.connect()
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
@@ -28,40 +31,61 @@ class Engine:
         return True
 
     # Query execution
-    def _execute(self, query: str, parameters: dict = None):
-        if parameters:
-            self.cursor.execute(query, parameters)
-        else:
-            self.cursor.execute(query)
-        self.connection.commit()
-        return self.cursor
+    def _execute(
+        self,
+        query: str,
+        parameters: dict = None,
+        fetch: bool = False,
+        fetchall: bool = False,
+        lastrowid: bool = False,
+        rowcount: bool = False,
+        commit: bool = True
+    ):
+        with self.lock:
+            if parameters:
+                self.cursor.execute(query, parameters)
+            else:
+                self.cursor.execute(query)
+
+            if commit:
+                self.connection.commit()
+            if fetch:
+                return self.cursor.fetchone()
+            if fetchall:
+                return self.cursor.fetchall()
+            if lastrowid:
+                return self.cursor.lastrowid
+            if rowcount:
+                return self.cursor.rowcount
+
+    def execute(self, query: "Query") -> "sqlite3.Cursor":
+        return self._execute(query.query, query.parameters)
 
     # CRUD operations
-    def select(self, **kwargs):
+    def select(self, **kwargs) -> list:
         query = Select(**kwargs)
-        return self._execute(query.query, query.parameters).fetchall()
+        return self._execute(query.query, query.parameters, fetchall=True)
 
-    def insert(self, **kwargs):
+    def insert(self, **kwargs) -> int:
         query = Insert(**kwargs)
-        return self._execute(query.query, query.parameters).lastrowid
+        return self._execute(query.query, query.parameters, lastrowid=True)
 
-    def update(self, **kwargs):
+    def update(self, **kwargs) -> int:
         query = Update(**kwargs)
-        return self._execute(query.query, query.parameters).rowcount
+        return self._execute(query.query, query.parameters, rowcount=True)
 
-    def delete(self, **kwargs):
+    def delete(self, **kwargs) -> int:
         query = Delete(**kwargs)
-        return self._execute(query.query, query.parameters).rowcount
+        return self._execute(query.query, query.parameters, rowcount=True)
 
     # Table management
-    def create_table(self, table_name, **kwargs):
+    def create_table(self, table_name, **kwargs) -> None:
         query = CreateTable(table_name=table_name, **kwargs)
         return self._execute(query.query, query.parameters)
 
-    def create_view(self, view_name, **kwargs):
-        query = CreateView(view_name=view_name, query=Select(**kwargs).with_parameters())
-        return self._execute(query.query)
+    def create_view(self, view_name, **kwargs) -> None:
+        self._execute(f"CREATE VIEW {view_name} AS {Select(**kwargs).with_parameters()}")
 
-    def show_tables(self):
+    def show_tables(self) -> list:
         query = "SELECT name FROM sqlite_master WHERE type='table';"
-        return self._execute(query).fetchall()
+        return self._execute(query, fetchall=True)

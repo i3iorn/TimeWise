@@ -1,13 +1,63 @@
+import re
 from dataclasses import dataclass
-from enum import Enum
 from typing import overload, List
 
 from src.exceptions import QueryBuilderException
 
 
+class SQLValidator:
+    @staticmethod
+    def validate_identifier(identifier):
+        """Validate an SQL identifier, such as a table or column name."""
+        if not re.match(r"^[A-Za-z0-9_]+$", str(identifier)):
+            raise ValueError("Invalid identifier: Identifiers must be alphanumeric or underscore characters only.")
+
+    @staticmethod
+    def validate_data_type(data_type):
+        """Validate an SQL data type."""
+        data_types = ["TEXT", "INTEGER", "REAL", "BLOB", "NUMERIC"]
+        if data_type.upper() not in data_types:
+            raise ValueError(f"Invalid data type: '{data_type}' is not a valid SQL data type.")
+
+    @staticmethod
+    def validate_operator(operator):
+        """Validate an SQL operator."""
+        operators = ["=", "!=", ">", "<", ">=", "<=", "LIKE", "IN", "NOT IN", "IS", "IS NOT", "BETWEEN", "NOT BETWEEN"]
+        if operator.upper() not in operators:
+            raise ValueError(f"Invalid operator: '{operator}' is not a valid SQL operator.")
+
+    @staticmethod
+    def validate_constraint(constraint):
+        """Validate an SQL constraint."""
+        constraints = ["PRIMARY KEY", "UNIQUE", "CHECK", "FOREIGN KEY", "NOT NULL", "DEFAULT", "AUTOINCREMENT"]
+        if constraint.upper() not in constraints:
+            raise ValueError(f"Invalid constraint: '{constraint}' is not a valid SQL constraint.")
+
+    @staticmethod
+    def validate_order(order):
+        """Validate an SQL ORDER BY direction."""
+        directions = ["ASC", "DESC", "RANDOM"]
+        if order.upper() not in directions:
+            raise ValueError(f"Invalid order: '{order}' is not a valid SQL ORDER BY direction.")
+
+
 class Query:
-    def __call__(self):
-        return self.build()
+    """
+    Base class for SQL queries that can be built and executed.
+
+    :param table_name: The name of the table to query.
+    :type: str
+    :param query: The SQL query string.
+    :type: str
+    :param parameters: A dictionary of parameters to be used in the query.
+    :type: dict
+    """
+    def __init__(self, table_name: str = None):
+        SQLValidator.validate_identifier(table_name)
+
+        self._table_name = table_name
+        self.query = None
+        self.parameters = {}
 
     @property
     def table_name(self):
@@ -15,42 +65,65 @@ class Query:
 
     @table_name.setter
     def table_name(self, table_name: str):
-        if not table_name:
-            raise QueryBuilderException("Table name cannot be empty.")
-        if not all(c.isalnum or c == "_" for c in table_name):
-            raise QueryBuilderException("Table name can only contain alphanumeric characters.")
-
         self._table_name = table_name
 
-    def with_parameters(self):
+    def with_parameters(self) -> str:
+        """
+        Return the query with the parameters replaced. Specifically for use in creating views. Introduces a security
+        risk if used. Take extra care to sanitize inputs.
+
+        :return: The query with parameters replaced.
+        :rtype: str
+        """
         query = self.query
         for key, val in self.parameters.items():
+            SQLValidator.validate_identifier(val)
             query = query.replace(f":{key}", f"'{val}'")
 
         return query
 
 
-class Order(Enum):
-    ASC = "ASC"
-    DESC = "DESC"
-    RANDOM = "RANDOM"
-
-
 class CanBeOrdered:
+    """
+    Mixin class for queries that can be ordered.
+
+    :param column: The column to order by.
+    :type: str
+    :param direction: The direction to order by.
+    :type: str
+
+    :raises QueryBuilderException: If an invalid column name or direction is provided.
+
+    :return: The query with the order clause added.
+    :rtype: Query
+    """
     def order_by(self, column: str = "ID", direction: str = "ASC"):
-        if self.query:
-            if column.isalnum() and direction.upper() in ["ASC", "DESC"]:
-                self.parameters["order"] = f"{self.query} ORDER BY {column} {direction}"
-            elif column.isalnum() and direction.upper() == "RANDOM":
-                self.parameters["order"] = f"{self.query} ORDER BY RANDOM()"
-            else:
-                raise QueryBuilderException("Invalid column name or direction provided.")
-            self.query += " :order"
+        SQLValidator.validate_identifier(column)
+        SQLValidator.validate_order(direction)
+        if direction.upper() in ["ASC", "DESC"]:
+            self.parameters["order"] = f"{self.query} ORDER BY {column} {direction}"
+        elif direction.upper() == "RANDOM":
+            self.parameters["order"] = f"{self.query} ORDER BY RANDOM()"
         else:
-            raise QueryBuilderException("No active query.")
+            raise QueryBuilderException("Invalid column name or direction provided.")
+        self.query += " :order"
+        return self
 
 
 class CanBeLimited:
+    """
+    Mixin class for queries that can be limited.
+
+    :param limit: The number of rows to limit the query to.
+    :type: int
+    :param offset: The offset to start the limit from.
+    :type: int
+
+    :raises QueryBuilderException: If the limit is less than or equal to 0 or the offset is less than 0.
+
+    :return: The query with the limit clause added.
+    :rtype: Query
+    """
     @overload
     def limit(self, limit: int):
         """
@@ -66,21 +139,34 @@ class CanBeLimited:
         ...
 
     def limit(self, limit: int, offset: int = None):
-        if self.query:
-            if limit > 0:
-                self.parameters["limit"] = f"{self.query} LIMIT {limit}"
-                if offset and offset > 0:
-                    self.parameters["limit"] += f"{self.query} OFFSET {offset}"
-                elif offset and offset < 0:
-                    raise QueryBuilderException("Offset must be greater than or equal to 0.")
-                self.query += " :limit"
-            else:
-                raise QueryBuilderException("Limit must be greater than 0.")
+        if limit > 0:
+            self.parameters["limit"] = f"{self.query} LIMIT {limit}"
+            if offset and offset > 0:
+                self.parameters["limit"] += f"{self.query} OFFSET {offset}"
+            elif offset and offset < 0:
+                raise QueryBuilderException("Offset must be greater than or equal to 0.")
+            self.query += " :limit"
         else:
-            raise QueryBuilderException("No active query.")
+            raise QueryBuilderException("Limit must be greater than 0.")
+        return self
 
 
 class CanBeFiltered:
+    """
+    Mixin class for queries that can be filtered.
+
+    :param conditions: A dictionary of conditions to filter the query by.
+    :type: dict
+    :param column: The column to filter by.
+    :type: str
+    :param value: The value to filter by.
+    :type: str
+
+    :raises QueryBuilderException: If an invalid column name is provided or no conditions are provided.
+
+    :return: The query with the where clause added.
+    :rtype: Query
+    """
     @overload
     def where(self, conditions: dict):
         """
@@ -96,35 +182,83 @@ class CanBeFiltered:
         ...
 
     def where(self, conditions: dict = None, column: str = None, value: str = None):
-        if self.query:
-            if conditions:
-                if not all([key.replace("_", "").isalnum() for key in conditions.keys()]):
-                    raise QueryBuilderException("Invalid column name provided.")
-                self.query = f"{self.query} WHERE {' AND '.join([f'{key} = :{key}' for key in conditions.keys()])}"
-                self.parameters.update(conditions)
-            elif column and value:
-                if column.isalnum():
-                    self.query = f"{self.query} WHERE {column} = :{column}"
-                    self.parameters[column] = value
-                else:
-                    raise QueryBuilderException("Invalid column name provided.")
+        if conditions:
+            [SQLValidator.validate_identifier(key) for key in conditions.keys()]
+
+            if not all([key.replace("_", "").isalnum() for key in conditions.keys()]):
+                raise QueryBuilderException("Invalid column name provided.")
+            self.query = f"{self.query} WHERE {' AND '.join([f'{key} = :{key}' for key in conditions.keys()])}"
+            self.parameters.update(conditions)
+
+        elif column and value:
+            SQLValidator.validate_identifier(column)
+            self.query = f"{self.query} WHERE {column} = :{column}"
+            self.parameters[column] = value
+
         else:
-            raise QueryBuilderException("No active query.")
+            raise QueryBuilderException("No conditions provided for where clause.")
+
+        return self
+
+
+class CanBeJoined:
+    """
+    Mixin class for queries that can be joined.
+
+    :param join_type: The type of join to perform.
+    :type: str
+    :param table: The table to join.
+    :type: str
+    :param on: The column to join on.
+    :type: str
+
+    :raises QueryBuilderException: If an invalid join type is provided.
+
+    :return: The query with the join clause added.
+    :rtype: Query
+    """
+    def join(self, join_type: str, table: str, on: str):
+        SQLValidator.validate_identifier(table)
+        join_types = ["INNER", "LEFT OUTER", "RIGHT OUTER", "FULL OUTER"]
+        if join_type.upper() not in join_types:
+            raise QueryBuilderException(f"Invalid join type: '{join_type}'. Valid options are: {', '.join(join_types)}")
+
+        self.query += f" {join_type.upper()} JOIN {table} ON {on}"
+        return self
 
 
 class Select(CanBeOrdered, CanBeLimited, CanBeFiltered, Query):
+    """
+    Class for building SELECT queries.
+
+    :param table_name: The name of the table to query.
+    :type: str
+
+    :param columns: The columns to select.
+    :type: list
+    :param conditions: A dictionary of conditions to filter the query by.
+    :type: dict
+    :param order_by: The column to order by.
+    :type: str
+    :param limit: The number of rows to limit the query to.
+    :type: int
+    :param offset: The offset to start the limit from.
+    :type: int
+
+    :return: The query string for the SELECT query.
+    :rtype: str
+    """
     def __init__(
             self,
             table_name: str,
-            columns: list = None,
+            columns: List[str] = None,
             conditions: dict = None,
             order_by: str = None,
             limit: int = None,
             offset: int = None
     ):
-        self.table_name = table_name
+        super().__init__(table_name)
         self.query = f"SELECT * FROM {table_name}"
-        self.parameters = {}
 
         if columns:
             self.query = self.query.replace("*", ", ".join(columns))
@@ -140,20 +274,42 @@ class Select(CanBeOrdered, CanBeLimited, CanBeFiltered, Query):
 
 
 class Insert(Query):
+    """
+    Class for building INSERT queries.
+
+    :param table_name: The name of the table to insert into.
+    :type: str
+    :param kwargs: The columns and values to insert.
+    :type: dict
+
+    :return: The query string for the INSERT query.
+    :rtype: str
+    """
     def __init__(self, table_name: str, **kwargs):
-        self.table_name = table_name
+        super().__init__(table_name)
         self.query = f"INSERT INTO {table_name}"
-        self.parameters = {}
 
         self.query = f"{self.query} ({', '.join(kwargs.keys())}) VALUES ({', '.join([f':{key}' for key in kwargs.keys()])})"
         self.parameters = kwargs
 
 
 class Update(CanBeFiltered, Query):
+    """
+    Class for building UPDATE queries.
+
+    :param table_name: The name of the table to update.
+    :type: str
+    :param kwargs: The columns and values to update.
+    :type: dict
+    :param conditions: A dictionary of conditions to filter the query by.
+    :type: dict
+
+    :return: The query string for the UPDATE query.
+    :rtype: str
+    """
     def __init__(self, table_name: str, **kwargs):
-        self.table_name = table_name
+        super().__init__(table_name)
         self.query = f"UPDATE {table_name} SET"
-        self.parameters = {}
 
         if "conditions" in kwargs:
             self.where(conditions=kwargs.pop("conditions"))
@@ -165,10 +321,22 @@ class Update(CanBeFiltered, Query):
 
 
 class Delete(CanBeFiltered, Query):
+    """
+    Class for building DELETE queries.
+
+    :param table_name: The name of the table to delete from.
+    :type: str
+    :param conditions: A dictionary of conditions to filter the query by.
+    :type: dict
+
+    :raises QueryBuilderException: If no conditions are provided.
+
+    :return: The query string for the DELETE query.
+    :rtype: str
+    """
     def __init__(self, table_name: str, conditions: dict = None):
-        self.table_name = table_name
+        super().__init__(table_name)
         self.query = f"DELETE FROM {table_name}"
-        self.parameters = {}
 
         if conditions:
             self.where(conditions=conditions)
@@ -178,6 +346,27 @@ class Delete(CanBeFiltered, Query):
 
 @dataclass
 class Column:
+    """
+    Dataclass for creating table columns.
+
+    :param name: The name of the column.
+    :type: str
+    :param data_type: The data type of the column.
+    :type: str
+    :param primary_key: Whether the column is a primary key.
+    :type: bool
+    :param auto_increment: Whether the column is auto-incrementing.
+    :type: bool
+    :param allow_null: Whether the column allows NULL values.
+    :type: bool
+    :param default: The default value for the column.
+    :type: str
+
+    :raises ValueError: If an invalid column name is provided.
+
+    :return: The query string for creating the column.
+    :rtype: str
+    """
     name: str
     data_type: str = "TEXT"
     primary_key: bool = False
@@ -186,25 +375,13 @@ class Column:
     default: str = None
 
     def __post_init__(self):
-        if not all(c.isalnum() or c == "_" for c in self.name):
-            raise QueryBuilderException("Invalid column name provided.")
-        if self.data_type.upper() not in ["TEXT", "INTEGER", "REAL", "BLOB"]:
-            raise QueryBuilderException("Invalid data type provided.")
-        if self.default and self.data_type.upper() == "INTEGER":
-            try:
-                int(self.default)
-            except ValueError:
-                raise QueryBuilderException("Default value must be an integer.")
-        if self.default and self.data_type.upper() == "REAL":
-            try:
-                float(self.default)
-            except ValueError:
-                raise QueryBuilderException("Default value must be a float.")
-        if self.default and self.data_type.upper() == "TEXT":
-            self.default = f"'{self.default}'"
+        SQLValidator.validate_identifier(self.name)
+        SQLValidator.validate_data_type(self.data_type)
 
-        if self.name.endswith("_at"):
-            self.default = "CURRENT_TIMESTAMP"
+        assert not self.auto_increment or self.primary_key, "Auto-increment columns must be primary keys."
+        assert not self.default or not self.allow_null, "Columns with default values cannot allow NULL."
+        assert not self.default or self.data_type.upper() in ["TEXT", "INTEGER"], "Default values must match the data type."
+        assert not self.default or self.default.replace("'", "").isalnum(), "Default values must be alphanumeric."
 
     def __repr__(self):
         """
@@ -222,24 +399,108 @@ class Column:
 
 @dataclass
 class ForeignKey:
+    """
+    Dataclass for creating foreign key constraints.
+
+    :param column: The column in the current table.
+    :type: str
+    :param reference_table: The table in the foreign key.
+    :type: str
+    :param reference_column: The column in the foreign key table.
+    :type: str
+
+    :raises ValueError: If an invalid column name is provided.
+
+    :return: The query string for creating the foreign key constraint.
+    :rtype: str
+    """
     column: str             # Column in the current table
     reference_table: str    # Table in the foreign key
     reference_column: str   # Column in the foreign key table
 
+    def __post_init__(self):
+        SQLValidator.validate_identifier(self.column)
+        SQLValidator.validate_identifier(self.reference_table)
+        SQLValidator.validate_identifier(self.reference_column)
+
+    def __repr__(self):
+        return f"FOREIGN KEY ({self.column}) REFERENCES {self.reference_table}({self.reference_column})"
+
 
 @dataclass
 class UniqueConstraint:
+    """
+    Dataclass for creating unique constraints.
+
+    :param columns: The columns to create the unique constraint on.
+    :type: list
+
+    :raises ValueError: If an invalid column name is provided.
+
+    :return: The query string for creating the unique constraint.
+    :rtype: str
+    """
     columns: List[str]
+
+    def __post_init__(self):
+        [SQLValidator.validate_identifier(col) for col in self.columns]
+
+    def __repr__(self):
+        return f"UNIQUE ({', '.join(self.columns)})"
 
 
 @dataclass
 class CheckConstraint:
+    """
+    Dataclass for creating check constraints.
+
+    :param column: The column to create the check constraint on.
+    :type: str
+    :param operator: The operator to use in the check constraint.
+    :type: str
+    :param value: The value to check against.
+    :type: str
+
+    :raises ValueError: If an invalid column name is provided.
+
+    :return: The query string for creating the check constraint.
+    :rtype: str
+    """
     column: str
     operator: str
     value: str
 
+    def __post_init__(self):
+        SQLValidator.validate_operator(self.operator)
+        SQLValidator.validate_identifier(self.column)
+        SQLValidator.validate_identifier(self.value)
+
+    def __repr__(self):
+        return f"CHECK ({self.column} {self.operator} {self.value})"
+
 
 class CreateTable(Query):
+    """
+    Class for building CREATE TABLE queries.
+
+    :param table_name: The name of the table to create.
+    :type: str
+    :param columns: The columns to create in the table.
+    :type: list
+    :param foreign_keys: The foreign key constraints to add to the table.
+    :type: list
+    :param unique_constraints: The unique constraints to add to the table.
+    :type: list
+    :param check_constraints: The check constraints to add to the table.
+    :type: list
+    :param can_exist: Whether the table can exist before creating it.
+    :type: bool
+
+    :raises ValueError: If an invalid column name is provided.
+
+    :return: The query string for creating the table.
+    :rtype: str
+    """
     def __init__(
             self,
             table_name: str,
@@ -249,42 +510,45 @@ class CreateTable(Query):
             check_constraints: List[CheckConstraint] = None,
             can_exist: bool = False
     ):
-        self.table_name = table_name
+        super().__init__(table_name)
         self.query = f"CREATE TABLE {table_name}"
-        self.parameters = {}
 
         if can_exist:
             self.query = f"{self.query} IF NOT EXISTS"
 
         self.query = f"{self.query} ({', '.join([str(col) for col in columns])}"
+
         if foreign_keys:
-            for fk in foreign_keys:
-                self.query = f"{self.query}, FOREIGN KEY ({fk.column}) REFERENCES {fk.reference_table}({fk.reference_column})"
+            self.query = f"{self.query}, {', '.join([str(fk) for fk in foreign_keys])}"
+
         if unique_constraints:
-            for uc in unique_constraints:
-                self.query = f"{self.query}, UNIQUE ({', '.join(uc.columns)})"
+            self.query = f"{self.query}, {', '.join([str(uc) for uc in unique_constraints])}"
+
         if check_constraints:
-            for cc in check_constraints:
-                self.query = f"{self.query}, CHECK ({cc.column} {cc.operator} {cc.value})"
+            self.query = f"{self.query}, {', '.join([str(cc) for cc in check_constraints])}"
 
         self.query = f"{self.query})"
-        self.query = self.query.replace("  ", " ")
-        self.query = self.query.replace(", )", ")")
-        self.query = self.query.replace(" ,", ",")
-
-
-class CreateView(Query):
-    def __init__(self, view_name: str, query: str):
-        self.view_name = view_name
-        self.query = f"CREATE VIEW {view_name} AS {query}"
-        self.parameters = {}
 
 
 class CreateIndex(Query):
+    """
+    Class for building CREATE INDEX queries.
+
+    :param table_name: The name of the table to create the index on.
+    :type: str
+    :param column: The column to create the index on.
+    :type: str
+    :param unique: Whether the index should be unique.
+    :type: bool
+
+    :raises ValueError: If an invalid column name is provided.
+
+    :return: The query string for creating the index.
+    :rtype: str
+    """
     def __init__(self, table_name: str, column: str, unique: bool = False):
-        self.table_name = table_name
-        if not column.isalnum():
-            raise QueryBuilderException("Invalid column name provided.")
+        super().__init__(table_name)
+        SQLValidator.validate_identifier(column)
 
         index_name = f"idx_{self.table_name}_{column}"
         self.query = f"CREATE {'UNIQUE' if unique else ''} INDEX {index_name} ON {table_name} ({column})"

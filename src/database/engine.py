@@ -1,7 +1,7 @@
 import os
 import sqlite3
 
-from src.database.query_builder import Select, Insert, Update, Delete, CreateTable
+from src.database.query_builder import Select, Insert, Update, Delete, CreateTable, CreateView
 
 
 __all__ = ["Engine"]
@@ -34,30 +34,34 @@ class Engine:
         else:
             self.cursor.execute(query)
         self.connection.commit()
-        return self.cursor.fetchall()
+        return self.cursor
 
     # CRUD operations
     def select(self, **kwargs):
         query = Select(**kwargs)
-        return self._execute(query.query, query.parameters)
+        return self._execute(query.query, query.parameters).fetchall()
 
     def insert(self, **kwargs):
         query = Insert(**kwargs)
-        return self._execute(query.query, query.parameters)
+        return self._execute(query.query, query.parameters).lastrowid
 
     def update(self, **kwargs):
         query = Update(**kwargs)
-        return self._execute(query.query, query.parameters)
+        return self._execute(query.query, query.parameters).rowcount
 
     def delete(self, **kwargs):
         query = Delete(**kwargs)
-        return self._execute(query.query, query.parameters)
+        return self._execute(query.query, query.parameters).rowcount
 
     # Table management
     def create_table(self, table_name, **kwargs):
         query = CreateTable(table_name=table_name, **kwargs)
         return self._execute(query.query, query.parameters)
 
+    def create_view(self, view_name, **kwargs):
+        query = CreateView(view_name=view_name, query=Select(**kwargs).with_parameters())
+        return self._execute(query.query)
+
     def show_tables(self):
         query = "SELECT name FROM sqlite_master WHERE type='table';"
-        return self._execute(query)
+        return self._execute(query).fetchall()

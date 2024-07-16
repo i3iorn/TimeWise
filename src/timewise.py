@@ -31,12 +31,13 @@ class TimeWise:
             table_name="groups",
             columns=[
                 Column("id", data_type="INTEGER", primary_key=True, auto_increment=True),
-                Column("name", primary_key=True),
+                Column("name"),
                 Column("created_at")
             ]
         )
-        self.database.insert(table_name="groups", name="tags")
-        self.database.insert(table_name="groups", name="category")
+        tag_id = self.database.insert(table_name="groups", name="tag")
+        category_id = self.database.insert(table_name="groups", name="category")
+        settings_id = self.database.insert(table_name="groups", name="setting")
 
         # Create table for generic values
         self.database.create_table(
@@ -45,7 +46,7 @@ class TimeWise:
                 Column("id", data_type="INTEGER", primary_key=True, auto_increment=True),
                 Column("name"),
                 Column("value"),
-                Column("group"),
+                Column("group_id", data_type="INTEGER"),
                 Column("created_at"),
                 Column("updated_at")
             ],
@@ -54,8 +55,15 @@ class TimeWise:
         )
 
         # Set default priority min and max
-        self.database.insert(table_name="timewise_values", name="priority_min", value="0", type="int")
-        self.database.insert(table_name="timewise_values", name="priority_max", value="5", type="int")
+        self.database.insert(table_name="timewise_values", name="priority_min", value="0", group_id=settings_id)
+        self.database.insert(table_name="timewise_values", name="priority_max", value="5", group_id=settings_id)
+
+        # Create views for tags, categories, and settings
+        self.database.create_view("tags", table_name="timewise_values", conditions={"group_id": tag_id})
+        self.database.create_view("categories", table_name="timewise_values", conditions={"group_id": category_id})
+        self.database.create_view("settings", table_name="timewise_values", conditions={"group_id": settings_id})
+
+        print(self.database.select(table_name="settings"))
 
         # Create table for tasks
         self.database.create_table(
@@ -66,7 +74,7 @@ class TimeWise:
                 Column("description"),
                 Column("category_id", data_type="INTEGER"),
                 Column("priority", data_type="INTEGER"),
-                Column("due_date", data_type="TEXT"),
+                Column("due_date"),
                 Column("completed", data_type="INTEGER"),
                 Column("created_at"),
                 Column("updated_at")

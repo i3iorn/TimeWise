@@ -22,6 +22,13 @@ class Query:
 
         self._table_name = table_name
 
+    def with_parameters(self):
+        query = self.query
+        for key, val in self.parameters.items():
+            query = query.replace(f":{key}", f"'{val}'")
+
+        return query
+
 
 class Order(Enum):
     ASC = "ASC"
@@ -91,16 +98,14 @@ class CanBeFiltered:
     def where(self, conditions: dict = None, column: str = None, value: str = None):
         if self.query:
             if conditions:
-                if not all([key.isalnum() for key in conditions.keys()]):
+                if not all([key.replace("_", "").isalnum() for key in conditions.keys()]):
                     raise QueryBuilderException("Invalid column name provided.")
-                self.parameters["where"] = f"{self.query} WHERE {' AND '.join([f'{key} = :{key}' for key in conditions.keys()])}"
+                self.query = f"{self.query} WHERE {' AND '.join([f'{key} = :{key}' for key in conditions.keys()])}"
                 self.parameters.update(conditions)
-                self.query += " :where"
             elif column and value:
                 if column.isalnum():
-                    self.parameters["where"] = f"{self.query} WHERE {column} = :{column}"
+                    self.query = f"{self.query} WHERE {column} = :{column}"
                     self.parameters[column] = value
-                    self.query += " :where"
                 else:
                     raise QueryBuilderException("Invalid column name provided.")
         else:
@@ -269,9 +274,9 @@ class CreateTable(Query):
 
 
 class CreateView(Query):
-    def __init__(self, view_name: str, query: "Select"):
+    def __init__(self, view_name: str, query: str):
         self.view_name = view_name
-        self.query = f"CREATE VIEW {view_name} AS {query.query}"
+        self.query = f"CREATE VIEW {view_name} AS {query}"
         self.parameters = {}
 
 

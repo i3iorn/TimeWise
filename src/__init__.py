@@ -4,13 +4,14 @@ from pathlib import Path
 from src import exceptions
 
 import custom_logging
-from database.sqlite import SQLite
+from database.engine import Engine as Database
 from secrets_manager import SecretsManager
+from src.timewise import TimeWise
 
 logger = custom_logging.get_logger(name="main")
 
 
-def load_evironment_variables():
+def load_environment_variables():
     logger.info("Loading environment variables")
     # Load environment variables from .env file
     try:
@@ -26,25 +27,6 @@ def load_evironment_variables():
         raise exceptions.EnvironmentVariableError("Environment variable loading failed") from e
 
 
-def setup_database():
-    logger.info("Setting up database")
-    # Verify that the database is setup
-    try:
-        SQLite(os.environ["DB_HOST"]).connect()
-    except Exception as e:
-        raise exceptions.DatabaseSetupError("Database setup failed") from e
-
-
-def verify_secrets_access():
-    logger.info("Verifying Secrets access")
-    # Verify that the secrets are accessible
-    try:
-        SecretsManager("TimeWise")
-    except FileNotFoundError as e:
-        raise FileNotFoundError("The secret manager file is not found. Make sure that BWS_APPLICATION_PATH is set "
-                                "correctly in '.env'") from e
-
-
 def setup_directories():
     logger.info("Setting up directories")
     # Verify that the required directories are present
@@ -54,22 +36,12 @@ def setup_directories():
         raise exceptions.ConfigurationError("Directory setup failed") from e
 
 
-def setup():
-    # Read environment variables
-    load_evironment_variables()
-
-    # Verify Secrets access
-    verify_secrets_access()
-
-    # Verify that the database is setup
-    setup_database()
-
-    # Verify that the required directories are present
-    # setup_directories()
-
-
 def main():
-    setup()
+    load_environment_variables()
+    app = TimeWise(
+        Database(),
+        SecretsManager("TimeWise")
+    )
 
 
 if __name__ == "__main__":

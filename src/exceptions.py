@@ -24,3 +24,11 @@ class EnvironmentVariableError(ApplicationError):
 
 class DatabaseSetupError(ApplicationError):
     pass
+
+
+class DatabaseError(ApplicationError):
+    pass
+
+
+class QueryBuilderException(DatabaseError):
+    pass

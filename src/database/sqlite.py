@@ -1,6 +1,7 @@
 import sqlite3
 
-from .base import QueryBuilder, Database
+from .base import Database
+from .query_builder import QueryBuilder
 
 
 class SQLite(Database):

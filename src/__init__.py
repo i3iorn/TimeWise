@@ -40,8 +40,9 @@ def verify_secrets_access():
     # Verify that the secrets are accessible
     try:
         SecretsManager("TimeWise")
-    except Exception as e:
-        raise exceptions.SecretsAccessError("Secrets access failed") from e
+    except FileNotFoundError as e:
+        raise FileNotFoundError("The secret manager file is not found. Make sure that BWS_APPLICATION_PATH is set "
+                                "correctly in '.env'") from e
 
 
 def setup_directories():
@@ -64,14 +65,11 @@ def setup():
     setup_database()
 
     # Verify that the required directories are present
-    setup_directories()
+    # setup_directories()
 
 
 def main():
-    try:
-        setup()
-    except Exception as e:
-        raise exceptions.SetupError("Setup failed") from e
+    setup()
 
 
 if __name__ == "__main__":

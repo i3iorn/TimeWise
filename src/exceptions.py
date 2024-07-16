@@ -10,10 +10,6 @@ class ConfigurationError(ApplicationError):
     pass
 
 
-class DatabaseError(ApplicationError):
-    pass
-
-
 class SecretsError(ApplicationError):
     pass
 
@@ -26,5 +22,5 @@ class EnvironmentVariableError(ApplicationError):
     pass
 
 
-class DatabaseSetupError(DatabaseError):
+class DatabaseSetupError(ApplicationError):
     pass

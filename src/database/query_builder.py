@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass
-from typing import overload, List
+from typing import overload, List, Type
 
 from src.exceptions import QueryBuilderException
 
@@ -39,6 +39,20 @@ class SQLValidator:
         directions = ["ASC", "DESC", "RANDOM"]
         if order.upper() not in directions:
             raise ValueError(f"Invalid order: '{order}' is not a valid SQL ORDER BY direction.")
+
+    @staticmethod
+    def validate_timings(timing):
+        """Validate an SQL trigger timing."""
+        timings = ["BEFORE", "AFTER", "INSTEAD OF"]
+        if timing.upper() not in timings:
+            raise ValueError(f"Invalid timing: '{timing}' is not a valid SQL trigger timing.")
+
+    @staticmethod
+    def validate_actions(action):
+        """Validate an SQL trigger action."""
+        actions = ["INSERT", "UPDATE", "DELETE"]
+        if action.upper() not in actions:
+            raise ValueError(f"Invalid action: '{action}' is not a valid SQL trigger action.")
 
 
 class Query:
@@ -287,7 +301,7 @@ class Insert(Query):
     """
     def __init__(self, table_name: str, **kwargs):
         super().__init__(table_name)
-        self.query = f"INSERT INTO {table_name}"
+        self.query = f"INSERT {'OR IGNORE ' if kwargs.pop("drop_duplicate") else ''}INTO {table_name}"
 
         self.query = f"{self.query} ({', '.join(kwargs.keys())}) VALUES ({', '.join([f':{key}' for key in kwargs.keys()])})"
         self.parameters = kwargs
@@ -376,12 +390,12 @@ class Column:
 
     def __post_init__(self):
         SQLValidator.validate_identifier(self.name)
+        SQLValidator.validate_identifier(self.default) if self.default else None
         SQLValidator.validate_data_type(self.data_type)
 
         assert not self.auto_increment or self.primary_key, "Auto-increment columns must be primary keys."
         assert not self.default or not self.allow_null, "Columns with default values cannot allow NULL."
         assert not self.default or self.data_type.upper() in ["TEXT", "INTEGER"], "Default values must match the data type."
-        assert not self.default or self.default.replace("'", "").isalnum(), "Default values must be alphanumeric."
 
     def __repr__(self):
         """
@@ -473,7 +487,6 @@ class CheckConstraint:
     def __post_init__(self):
         SQLValidator.validate_operator(self.operator)
         SQLValidator.validate_identifier(self.column)
-        SQLValidator.validate_identifier(self.value)
 
     def __repr__(self):
         return f"CHECK ({self.column} {self.operator} {self.value})"
@@ -510,11 +523,12 @@ class CreateTable(Query):
             check_constraints: List[CheckConstraint] = None,
             can_exist: bool = False
     ):
+        columns.extend([
+            Column("created_at", default="CURRENT_TIMESTAMP", allow_null=False),
+            Column("updated_at")
+        ])
         super().__init__(table_name)
-        self.query = f"CREATE TABLE {table_name}"
-
-        if can_exist:
-            self.query = f"{self.query} IF NOT EXISTS"
+        self.query = f"CREATE TABLE {'IF NOT EXISTS ' if can_exist else ''}{table_name}"
 
         self.query = f"{self.query} ({', '.join([str(col) for col in columns])}"
 
@@ -553,3 +567,40 @@ class CreateIndex(Query):
         index_name = f"idx_{self.table_name}_{column}"
         self.query = f"CREATE {'UNIQUE' if unique else ''} INDEX {index_name} ON {table_name} ({column})"
         self.parameters = {}
+
+
+class CreateTrigger:
+    """
+    Class for building CREATE TRIGGER queries.
+
+    :param trigger_name: The name of the trigger.
+    :type: str
+    :param table_name: The name of the table to create the trigger on.
+    :type: str
+    :param action: The action to trigger the trigger.
+    :type: str
+    :param timing: The timing of the trigger.
+    :type: str
+    :param body: The body of the trigger.
+    :type: str
+
+    :raises ValueError: If an invalid table name is provided.
+
+    :return: The query string for creating the trigger.
+    :rtype: str
+    """
+    def __init__(
+            self,
+            trigger_name: str,
+            table_name: str,
+            action: str,
+            timing: str,
+            body: "Query",
+            can_exist=True
+    ):
+        SQLValidator.validate_identifier(table_name)
+        SQLValidator.validate_identifier(trigger_name)
+        SQLValidator.validate_actions(action)
+        SQLValidator.validate_timings(timing)
+
+        self.query = f"CREATE TRIGGER {'IF NOT EXISTS ' if can_exist else ''}{trigger_name} {timing.upper()} {action.upper()} ON {table_name} BEGIN {body.with_parameters()} END"

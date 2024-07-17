@@ -3,7 +3,7 @@ import sqlite3
 
 from multiprocessing import Lock
 
-from src.database.query_builder import Select, Insert, Update, Delete, CreateTable, Query
+from src.database.query_builder import Select, Insert, Update, Delete, CreateTable, Query, CreateTrigger
 
 __all__ = ["Engine"]
 
@@ -42,10 +42,28 @@ class Engine:
         commit: bool = True
     ):
         with self.lock:
-            if parameters:
-                self.cursor.execute(query, parameters)
-            else:
-                self.cursor.execute(query)
+            try:
+                if parameters:
+                    self.cursor.execute(query, parameters)
+                else:
+                    self.cursor.execute(query)
+            except sqlite3.Error as e:
+                print(query)
+                print(parameters)
+                raise e
+
+            if query.startswith("CREATE TABLE") and "update_at" in query:
+                self.cursor.execute(CreateTrigger(
+                    table_name=query.split(" ")[2],
+                    trigger_name="update_at",
+                    action="UPDATE",
+                    timing="AFTER",
+                    body=Update(
+                        table_name=query.split(" ")[2],
+                        columns={"updated_at": "CURRENT_TIMESTAMP"},
+                        where={"id": "OLD.id"}
+                    )).query
+                )
 
             if commit:
                 self.connection.commit()
@@ -84,7 +102,7 @@ class Engine:
         return self._execute(query.query, query.parameters)
 
     def create_view(self, view_name, **kwargs) -> None:
-        self._execute(f"CREATE VIEW {view_name} AS {Select(**kwargs).with_parameters()}")
+        self._execute(f"CREATE VIEW {'IF NOT EXISTS ' if kwargs.pop('can_exist') else ''}{view_name} AS {Select(**kwargs).with_parameters()}")
 
     def show_tables(self) -> list:
         query = "SELECT name FROM sqlite_master WHERE type='table';"

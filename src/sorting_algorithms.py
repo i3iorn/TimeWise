@@ -19,14 +19,20 @@ class Condition:
 
     Methods:
     __call__: Compare the value to the attribute of a task and return the result as a float.
+
+
+    ### WARNING: This class uses the eval function. If the value is untrusted input, this can lead to code execution.
     """
     def __init__(self, value: Union[str, int, float], operator: OPERATORS, attribute_name: str):
-        if not isinstance(value, (int, str, float)):
-            raise ValueError("Value must be an integer, string, or float")
+        if not isinstance(value, (int, float)):
+            if not isinstance(value, str) or not value.isalpha():
+                raise ValueError("Value must be an integer or float, alternatively a string of only letters")
+
         if operator not in OPERATORS:
             raise ValueError(f"Operator must be one of: {OPERATORS}")
-        if not isinstance(attribute_name, str):
-            raise ValueError("Attribute name must be a string")
+
+        if not isinstance(attribute_name, str) or not attribute_name.replace("_", "").isalpha():
+            raise ValueError("Attribute name must be a string of only letters and underscores")
 
         self.value = value
         self.operator = operator
@@ -37,7 +43,10 @@ class Condition:
             raise ValueError(f"Task does not have attribute {self.attribute_name}")
 
         attribute = getattr(task, self.attribute_name)
-        return float(eval(f"{attribute} {self.operator} {self.value}"))
+
+        ### WARNING: This is a security consideration. Do not use eval with untrusted input.
+        # TODO: Replace eval with a safer alternative
+        return float(eval(f"{self.value} {self.operator} {attribute}"))
 
 
 class TaskSortingAlgorithm:

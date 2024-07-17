@@ -207,3 +207,7 @@ class Status(TimeWiseValue, str):
 
 class Priority(TimeWiseValue):
     pass
+
+
+class Category(TimeWiseValue):
+    pass

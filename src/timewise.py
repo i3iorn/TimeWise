@@ -110,3 +110,34 @@ class TimeWise:
             ],
             unique_constraints=[UniqueConstraint(["task_id", "custom_field_id"])]
         )
+
+        # Create table for intervals
+        self.database.create_table(
+            table_name="intervals",
+            columns=[
+                Column("id", data_type="INTEGER", primary_key=True, auto_increment=True),
+                Column("name"),
+                Column("seconds"),
+                Column("description"),
+                Column("created_at"),
+                Column("updated_at")
+            ],
+            unique_constraints=[UniqueConstraint(["name"]), UniqueConstraint(["seconds"])]
+        )
+
+        self.database.insert(table_name="intervals", name="minute", seconds=60, description="1 minute")
+        self.database.insert(table_name="intervals", name="hour", seconds=3600, description="1 hour")
+        self.database.insert(table_name="intervals", name="day", seconds=86400, description="1 day")
+        self.database.insert(table_name="intervals", name="week", seconds=604800, description="1 week")
+        self.database.insert(table_name="intervals", name="month", seconds=2628000, description="1 month")
+        self.database.insert(table_name="intervals", name="year", seconds=31536000, description="1 year")
+
+        # Create table for task intervals
+        self.database.create_table(
+            table_name="task_intervals",
+            columns=[
+                Column("task_id", data_type="INTEGER"),
+                Column("interval")
+            ],
+            foreign_keys=[ForeignKey("task_id", "tasks", "id")]
+        )

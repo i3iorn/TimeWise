@@ -38,6 +38,7 @@ class TimeWise:
         tag_id = self.database.insert(table_name="groups", name="tag")
         category_id = self.database.insert(table_name="groups", name="category")
         settings_id = self.database.insert(table_name="groups", name="setting")
+        custom_field_id = self.database.insert(table_name="groups", name="custom_field")
 
         # Create table for generic values
         self.database.create_table(
@@ -62,8 +63,7 @@ class TimeWise:
         self.database.create_view("tags", table_name="timewise_values", conditions={"group_id": tag_id})
         self.database.create_view("categories", table_name="timewise_values", conditions={"group_id": category_id})
         self.database.create_view("settings", table_name="timewise_values", conditions={"group_id": settings_id})
-
-        print(self.database.select(table_name="settings"))
+        self.database.create_view("custom_fields", table_name="timewise_values", conditions={"group_id": custom_field_id})
 
         # Create table for tasks
         self.database.create_table(
@@ -80,4 +80,33 @@ class TimeWise:
                 Column("updated_at")
             ],
             foreign_keys=[ForeignKey("category_id", "categories", "id")]
+        )
+
+        # Create table for task tags
+        self.database.create_table(
+            table_name="task_tags",
+            columns=[
+                Column("task_id", data_type="INTEGER"),
+                Column("tag_id", data_type="INTEGER")
+            ],
+            foreign_keys=[
+                ForeignKey("task_id", "tasks", "id"),
+                ForeignKey("tag_id", "tags", "id")
+            ],
+            unique_constraints=[UniqueConstraint(["task_id", "tag_id"])]
+        )
+
+        # Create table for task custom fields
+        self.database.create_table(
+            table_name="task_custom_fields",
+            columns=[
+                Column("task_id", data_type="INTEGER"),
+                Column("custom_field_id", data_type="INTEGER"),
+                Column("value")
+            ],
+            foreign_keys=[
+                ForeignKey("task_id", "tasks", "id"),
+                ForeignKey("custom_field_id", "custom_fields", "id")
+            ],
+            unique_constraints=[UniqueConstraint(["task_id", "custom_field_id"])]
         )

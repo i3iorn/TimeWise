@@ -50,7 +50,6 @@ class TimeWise:
     def __init__(self):
         os.environ["ROOT"] = str(Path(__file__).parent.parent.absolute())
         self.conf = Config()
-        print(json.dumps(self.conf.as_dict(), indent=4))
         logger.info("Config loaded")
 
         self.db = Database(self.conf)

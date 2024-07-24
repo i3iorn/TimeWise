@@ -109,3 +109,27 @@ database:
       - name: year
         seconds: 31536000
         description: "1 year"
+    statuses:
+      - name: open
+        value: "Open"
+      - name: in_progress
+        value: "In Progress"
+      - name: on_hold
+        value: "On Hold"
+      - name: completed
+        value: "Completed"
+      - name: canceled
+        value: "Canceled"
+  views:
+    - name: tags
+      source: timewise_values
+      filter: "group_id = (SELECT id FROM groups WHERE name = 'tag')"
+    - name: categories
+      source: timewise_values
+      filter: "group_id = (SELECT id FROM groups WHERE name = 'category')"
+    - name: settings
+      source: timewise_values
+      filter: "group_id = (SELECT id FROM groups WHERE name = 'setting')"
+    - name: custom_fields
+      source: timewise_values
+      filter: "group_id = (SELECT id FROM groups WHERE name = 'custom_field')"

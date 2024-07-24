@@ -1,11 +1,10 @@
-import json
 import logging
-import os
 import sqlite3
 
 from threading import Lock
 from typing import Union, List, TYPE_CHECKING
 
+from src.config import ConfigFlag
 from src.database.query_builder import Select, Insert, Update, Delete, CreateTable, Query, CreateTrigger
 
 if TYPE_CHECKING:
@@ -48,14 +47,14 @@ class Engine:
 
     def _setup_db(self):
         for table in self._config["tables"].values():
-            print(type(table), table)
             self.create_table(**table)
 
         for view in self._config["views"]:
             self.create_view(**view)
 
-        for trigger in self._config["triggers"]:
-            self.create_trigger(**trigger)
+        if "triggers" in self._config:
+            for trigger in self._config["triggers"]:
+                self.create_trigger(**trigger)
 
     # Query execution
     def _execute(
@@ -112,25 +111,28 @@ class Engine:
         query = CreateTable(**kwargs)
         return self._execute(query.query, query.parameters)
 
-    def create_view(self, view_name: str, **kwargs) -> None:
-        if not view_name:
+    def create_view(self, name: str, **kwargs) -> None:
+        if not name:
             raise ValueError("View name must be provided and cannot be empty.")
 
         # Assuming 'can_exist' is an optional boolean parameter in kwargs
         can_exist = kwargs.pop('can_exist', False)
         view_existence_clause = "IF NOT EXISTS " if can_exist else ""
+        filter = kwargs.pop("filter", None)
 
         # Construct the SELECT statement part of the view creation
-        select_statement = Select(**kwargs).with_parameters()
+        select_statement = Select(name=kwargs.pop("source"), **kwargs).with_parameters()
 
         # Construct the full CREATE VIEW statement
-        create_view_statement = f"CREATE VIEW {view_existence_clause}{view_name} AS {select_statement}"
+        create_view_statement = f"CREATE VIEW {view_existence_clause}{name} AS {select_statement}"
+        if filter:
+            create_view_statement += f" WHERE {filter}"
 
         try:
             self._execute(create_view_statement)
         except sqlite3.Error as e:
             # Handle specific database errors if needed
-            raise RuntimeError(f"Failed to create view '{view_name}': {e}")
+            raise RuntimeError(f"Failed to create view '{name}': {e}")
 
     def create_trigger(self, **kwargs) -> None:
         query = CreateTrigger(**kwargs)

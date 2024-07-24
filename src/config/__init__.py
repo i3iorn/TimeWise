@@ -1,6 +1,7 @@
 # Setup and Configuration for the application
 import json
 import os
+from enum import Enum
 from pathlib import Path
 from typing import List, Tuple, Any
 
@@ -8,16 +9,22 @@ import yaml
 
 import src.exceptions as exceptions
 
-CONFIG_FOLDER = Path("config")
+CONFIG_FOLDER = Path("src/config")
 
 with open(CONFIG_FOLDER.joinpath("value_types").absolute(), "r", encoding="utf8") as f:
     VALUE_TYPES = {key: eval(value) for key, value in [line.strip().split("=") for line in f.readlines()]}
 
 
+class ConfigFlag(Enum):
+    ALLOW_NONE = 1
+    DEEP_VALIDATION = 2
+
+
 # Read all config files and set the environment variables
 class Config:
-    def __init__(self, *args, load_files: bool = True):
+    def __init__(self, *args, load_files: bool = True, **kwargs) -> None:
         self._config = {}
+        self.flags = set()
 
         if args:
             if not isinstance(args[0], dict):
@@ -29,6 +36,13 @@ class Config:
         if load_files:
             self._read_config_files()
         self._load_user_env_files()
+
+        for key, value in kwargs.items():
+            if key in ConfigFlag:
+                if value:
+                    self.flags.add(ConfigFlag[key])
+                else:
+                    self.flags.remove(ConfigFlag[key])
 
     def _read_config_files(self):
         for file in [
@@ -53,19 +67,19 @@ class Config:
 
             self._config.update(conf)
 
-    @classmethod
-    def _validate_new_value(cls, key: str, value: str, parent: str = "") -> None:
+    def _validate_new_value(self, key: str, value: str, parent: str = "") -> None:
         vtk = f"{parent}.{key}" if parent else key
         if vtk in VALUE_TYPES:
             if not isinstance(value, VALUE_TYPES[vtk]):
                 raise exceptions.ConfigValueTypeError(vtk, VALUE_TYPES[vtk], type(value))
-        elif not parent and vtk not in VALUE_TYPES:
+        elif (not parent or ConfigFlag.DEEP_VALIDATION in self.flags) and vtk not in VALUE_TYPES:
             raise exceptions.ConfigKeyNotRecognizedError(vtk)
         if isinstance(value, dict):
             for sub_key, sub_value in value.items():
-                cls._validate_new_value(sub_key, sub_value, vtk)
+                self._validate_new_value(sub_key, sub_value, vtk)
 
-    def _load_user_env_files(self):
+    @staticmethod
+    def _load_user_env_files():
         env_file = Path(os.environ.get("ROOT")).joinpath(".env")
         if env_file.exists():
             with open(env_file, "r") as f:
@@ -91,9 +105,11 @@ class Config:
         try:
             value = self._config[item.lower()]
             if isinstance(value, dict):
-                return Config(value, load_files=False)
+                return Config(value, load_files=False, **{flag.name: True for flag in self.flags})
             return value
         except KeyError:
+            if ConfigFlag.ALLOW_NONE in self.flags:
+                return None
             raise exceptions.ConfigurationNotSet(item)
 
     def __setitem__(self, key, value):

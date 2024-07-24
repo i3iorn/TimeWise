@@ -1,3 +1,5 @@
+import json
+import logging
 import os
 import sqlite3
 
@@ -9,7 +11,10 @@ from src.database.query_builder import Select, Insert, Update, Delete, CreateTab
 if TYPE_CHECKING:
     from src.config import Config
 
-__all__ = ["Engine"]
+__all__ = ["TimeWiseEngine"]
+
+
+logger = logging.getLogger(__name__)
 
 
 class DatabaseConnection(sqlite3.Connection):
@@ -38,6 +43,20 @@ class Engine:
         self.dbc = DatabaseConnection(conf)
         self.lock = Lock()
 
+        self._config = conf["Database"]
+        self._setup_db()
+
+    def _setup_db(self):
+        for table in self._config["tables"].values():
+            print(type(table), table)
+            self.create_table(**table)
+
+        for view in self._config["views"]:
+            self.create_view(**view)
+
+        for trigger in self._config["triggers"]:
+            self.create_trigger(**trigger)
+
     # Query execution
     def _execute(
         self,
@@ -60,8 +79,10 @@ class Engine:
             if commit:
                 self.dbc.commit()
 
-            fm = getattr(self.dbc.cursor, fetch_method, None)
-            return fm() if fm else None
+            if fetch_method:
+                fm = getattr(self.dbc.cursor, fetch_method)
+                return fm()
+            return None
 
     def execute(self, query: "Query") -> "sqlite3.Cursor":
         return self._execute(query.query, query.parameters)
@@ -87,8 +108,8 @@ class Engine:
         return self.crud("rowcount", **kwargs)
 
     # Table management
-    def create_table(self, table_name, **kwargs) -> None:
-        query = CreateTable(table_name=table_name, **kwargs)
+    def create_table(self, **kwargs) -> None:
+        query = CreateTable(**kwargs)
         return self._execute(query.query, query.parameters)
 
     def create_view(self, view_name: str, **kwargs) -> None:
@@ -111,6 +132,22 @@ class Engine:
             # Handle specific database errors if needed
             raise RuntimeError(f"Failed to create view '{view_name}': {e}")
 
+    def create_trigger(self, **kwargs) -> None:
+        query = CreateTrigger(**kwargs)
+        return self._execute(query.query, query.parameters)
+
     def show_tables(self) -> list:
         query = "SELECT name FROM sqlite_master WHERE type='table';"
         return self._execute(query, fetch_method="fetchall")
+
+    def show_views(self) -> list:
+        query = "SELECT name FROM sqlite_master WHERE type='view';"
+        return self._execute(query, fetch_method="fetchall")
+
+
+class TimeWiseEngine(Engine):
+    """
+    TimeWiseEngine is a subclass of Engine that is responsible for managing the database connection for the TimeWise
+    """
+    def get_tasks(self):
+        return self.select(table="tasks")

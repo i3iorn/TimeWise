@@ -1,4 +1,3 @@
-database.db_host=str
 name=str
 version=str
 description=str
@@ -6,3 +5,4 @@ author=str
 license=str
 email=str
 database=dict
+application=dict

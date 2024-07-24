@@ -74,7 +74,7 @@ database:
         - constraint: priority
           operator: ">="
           value: "0"
-  default_values:
+  initial_values:
     groups:
       - name: tag
       - name: category

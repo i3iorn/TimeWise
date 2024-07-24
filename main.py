@@ -5,9 +5,13 @@ from fastapi import FastAPI
 from src.timewise import TimeWise
 
 app = FastAPI()
-timewise = TimeWise()
 
 
 @app.get("/")
 def read_root():
-    return timewise.version
+    return TimeWise().api.name
+
+
+@app.get("/tasks")
+def read_tasks():
+    return TimeWise().api.tasks

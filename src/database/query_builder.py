@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass
-from typing import overload, List, Type
+from typing import overload, List, Type, Union
 
 from src.exceptions import QueryBuilderException
 
@@ -9,8 +9,12 @@ class SQLValidator:
     @staticmethod
     def validate_identifier(identifier):
         """Validate an SQL identifier, such as a table or column name."""
+        if not isinstance(identifier, (str, float, int)):
+            raise ValueError(f"Invalid identifier: ({identifier}). Identifiers must be strings.")
+
         if not re.match(r"^[A-Za-z0-9_]+$", str(identifier)):
-            raise ValueError("Invalid identifier: Identifiers must be alphanumeric or underscore characters only.")
+            raise ValueError(f"Invalid identifier: ({identifier}). Identifiers must be alphanumeric or underscore "
+                             f"characters only.")
 
     @staticmethod
     def validate_data_type(data_type):
@@ -59,27 +63,27 @@ class Query:
     """
     Base class for SQL queries that can be built and executed.
 
-    :param table_name: The name of the table to query.
+    :param name: The name of the table to query.
     :type: str
     :param query: The SQL query string.
     :type: str
     :param parameters: A dictionary of parameters to be used in the query.
     :type: dict
     """
-    def __init__(self, table_name: str = None):
-        SQLValidator.validate_identifier(table_name)
+    def __init__(self, name: str = None):
+        SQLValidator.validate_identifier(name)
 
-        self._table_name = table_name
+        self._name = name
         self.query = None
         self.parameters = {}
 
     @property
-    def table_name(self):
-        return self._table_name
+    def name(self):
+        return self._name
 
-    @table_name.setter
-    def table_name(self, table_name: str):
-        self._table_name = table_name
+    @name.setter
+    def name(self, name: str):
+        self._name = name
 
     def with_parameters(self) -> str:
         """
@@ -245,7 +249,7 @@ class Select(CanBeOrdered, CanBeLimited, CanBeFiltered, Query):
     """
     Class for building SELECT queries.
 
-    :param table_name: The name of the table to query.
+    :param name: The name of the table to query.
     :type: str
 
     :param columns: The columns to select.
@@ -264,15 +268,20 @@ class Select(CanBeOrdered, CanBeLimited, CanBeFiltered, Query):
     """
     def __init__(
             self,
-            table_name: str,
+            table: str = None,
+            name: str = None,
             columns: List[str] = None,
             conditions: dict = None,
             order_by: str = None,
             limit: int = None,
             offset: int = None
     ):
-        super().__init__(table_name)
-        self.query = f"SELECT * FROM {table_name}"
+        name = name if name else table
+        if not name:
+            raise QueryBuilderException("No table name provided for select query.")
+
+        super().__init__(name)
+        self.query = f"SELECT * FROM {name}"
 
         if columns:
             self.query = self.query.replace("*", ", ".join(columns))
@@ -291,7 +300,7 @@ class Insert(Query):
     """
     Class for building INSERT queries.
 
-    :param table_name: The name of the table to insert into.
+    :param name: The name of the table to insert into.
     :type: str
     :param kwargs: The columns and values to insert.
     :type: dict
@@ -299,9 +308,9 @@ class Insert(Query):
     :return: The query string for the INSERT query.
     :rtype: str
     """
-    def __init__(self, table_name: str, **kwargs):
-        super().__init__(table_name)
-        self.query = f"INSERT {'OR IGNORE ' if kwargs.pop("drop_duplicate") else ''}INTO {table_name}"
+    def __init__(self, name: str, **kwargs):
+        super().__init__(name)
+        self.query = f"INSERT {'OR IGNORE ' if kwargs.pop("drop_duplicate") else ''}INTO {name}"
 
         self.query = f"{self.query} ({', '.join(kwargs.keys())}) VALUES ({', '.join([f':{key}' for key in kwargs.keys()])})"
         self.parameters = kwargs
@@ -311,7 +320,7 @@ class Update(CanBeFiltered, Query):
     """
     Class for building UPDATE queries.
 
-    :param table_name: The name of the table to update.
+    :param name: The name of the table to update.
     :type: str
     :param kwargs: The columns and values to update.
     :type: dict
@@ -321,9 +330,9 @@ class Update(CanBeFiltered, Query):
     :return: The query string for the UPDATE query.
     :rtype: str
     """
-    def __init__(self, table_name: str, **kwargs):
-        super().__init__(table_name)
-        self.query = f"UPDATE {table_name} SET"
+    def __init__(self, name: str, **kwargs):
+        super().__init__(name)
+        self.query = f"UPDATE {name} SET"
 
         if "conditions" in kwargs:
             self.where(conditions=kwargs.pop("conditions"))
@@ -338,7 +347,7 @@ class Delete(CanBeFiltered, Query):
     """
     Class for building DELETE queries.
 
-    :param table_name: The name of the table to delete from.
+    :param name: The name of the table to delete from.
     :type: str
     :param conditions: A dictionary of conditions to filter the query by.
     :type: dict
@@ -348,9 +357,9 @@ class Delete(CanBeFiltered, Query):
     :return: The query string for the DELETE query.
     :rtype: str
     """
-    def __init__(self, table_name: str, conditions: dict = None):
-        super().__init__(table_name)
-        self.query = f"DELETE FROM {table_name}"
+    def __init__(self, name: str, conditions: dict = None):
+        super().__init__(name)
+        self.query = f"DELETE FROM {name}"
 
         if conditions:
             self.where(conditions=conditions)
@@ -418,9 +427,9 @@ class ForeignKey:
 
     :param column: The column in the current table.
     :type: str
-    :param reference_table: The table in the foreign key.
+    :param references: The table in the foreign key.
     :type: str
-    :param reference_column: The column in the foreign key table.
+    :param ref_column: The column in the foreign key table.
     :type: str
 
     :raises ValueError: If an invalid column name is provided.
@@ -429,16 +438,16 @@ class ForeignKey:
     :rtype: str
     """
     column: str             # Column in the current table
-    reference_table: str    # Table in the foreign key
-    reference_column: str   # Column in the foreign key table
+    references: str    # Table in the foreign key
+    ref_column: str   # Column in the foreign key table
 
     def __post_init__(self):
         SQLValidator.validate_identifier(self.column)
-        SQLValidator.validate_identifier(self.reference_table)
-        SQLValidator.validate_identifier(self.reference_column)
+        SQLValidator.validate_identifier(self.references)
+        SQLValidator.validate_identifier(self.ref_column)
 
     def __repr__(self):
-        return f"FOREIGN KEY ({self.column}) REFERENCES {self.reference_table}({self.reference_column})"
+        return f"FOREIGN KEY ({self.column}) REFERENCES {self.references}({self.ref_column})"
 
 
 @dataclass
@@ -468,7 +477,7 @@ class CheckConstraint:
     """
     Dataclass for creating check constraints.
 
-    :param column: The column to create the check constraint on.
+    :param constraint: The column to create the check constraint on.
     :type: str
     :param operator: The operator to use in the check constraint.
     :type: str
@@ -480,23 +489,23 @@ class CheckConstraint:
     :return: The query string for creating the check constraint.
     :rtype: str
     """
-    column: str
+    constraint: str
     operator: str
     value: str
 
     def __post_init__(self):
         SQLValidator.validate_operator(self.operator)
-        SQLValidator.validate_identifier(self.column)
+        SQLValidator.validate_identifier(self.constraint)
 
     def __repr__(self):
-        return f"CHECK ({self.column} {self.operator} {self.value})"
+        return f"CHECK ({self.constraint} {self.operator} {self.value})"
 
 
 class CreateTable(Query):
     """
     Class for building CREATE TABLE queries.
 
-    :param table_name: The name of the table to create.
+    :param name: The name of the table to create.
     :type: str
     :param columns: The columns to create in the table.
     :type: list
@@ -516,29 +525,33 @@ class CreateTable(Query):
     """
     def __init__(
             self,
-            table_name: str,
-            columns: List[Column],
-            foreign_keys: List[ForeignKey] = None,
-            unique_constraints: List[UniqueConstraint] = None,
-            check_constraints: List[CheckConstraint] = None,
+            name: str,
+            columns: List[Union[Column | dict]],
+            foreign_keys: List[Union[ForeignKey | dict]] = None,
+            unique_constraints: List[Union[UniqueConstraint | list]] = None,
+            check_constraints: List[Union[CheckConstraint | dict]] = None,
             can_exist: bool = False
     ):
+        columns = [col if isinstance(col, Column) else Column(**col) for col in columns]
         columns.extend([
             Column("created_at", default="CURRENT_TIMESTAMP", allow_null=False),
             Column("updated_at")
         ])
-        super().__init__(table_name)
-        self.query = f"CREATE TABLE {'IF NOT EXISTS ' if can_exist else ''}{table_name}"
+        super().__init__(name)
+        self.query = f"CREATE TABLE {'IF NOT EXISTS ' if can_exist else ''}{name}"
 
         self.query = f"{self.query} ({', '.join([str(col) for col in columns])}"
 
         if foreign_keys:
+            foreign_keys = [fk if isinstance(fk, ForeignKey) else ForeignKey(**fk) for fk in foreign_keys]
             self.query = f"{self.query}, {', '.join([str(fk) for fk in foreign_keys])}"
 
         if unique_constraints:
+            unique_constraints = [uc if isinstance(uc, UniqueConstraint) else UniqueConstraint(uc) for uc in unique_constraints]
             self.query = f"{self.query}, {', '.join([str(uc) for uc in unique_constraints])}"
 
         if check_constraints:
+            check_constraints = [cc if isinstance(cc, CheckConstraint) else CheckConstraint(**cc) for cc in check_constraints]
             self.query = f"{self.query}, {', '.join([str(cc) for cc in check_constraints])}"
 
         self.query = f"{self.query})"
@@ -548,7 +561,7 @@ class CreateIndex(Query):
     """
     Class for building CREATE INDEX queries.
 
-    :param table_name: The name of the table to create the index on.
+    :param name: The name of the table to create the index on.
     :type: str
     :param column: The column to create the index on.
     :type: str
@@ -560,12 +573,12 @@ class CreateIndex(Query):
     :return: The query string for creating the index.
     :rtype: str
     """
-    def __init__(self, table_name: str, column: str, unique: bool = False):
-        super().__init__(table_name)
+    def __init__(self, name: str, column: str, unique: bool = False):
+        super().__init__(name)
         SQLValidator.validate_identifier(column)
 
-        index_name = f"idx_{self.table_name}_{column}"
-        self.query = f"CREATE {'UNIQUE' if unique else ''} INDEX {index_name} ON {table_name} ({column})"
+        index_name = f"idx_{self.name}_{column}"
+        self.query = f"CREATE {'UNIQUE' if unique else ''} INDEX {index_name} ON {name} ({column})"
         self.parameters = {}
 
 
@@ -575,7 +588,7 @@ class CreateTrigger:
 
     :param trigger_name: The name of the trigger.
     :type: str
-    :param table_name: The name of the table to create the trigger on.
+    :param name: The name of the table to create the trigger on.
     :type: str
     :param action: The action to trigger the trigger.
     :type: str
@@ -592,15 +605,15 @@ class CreateTrigger:
     def __init__(
             self,
             trigger_name: str,
-            table_name: str,
+            name: str,
             action: str,
             timing: str,
             body: "Query",
             can_exist=True
     ):
-        SQLValidator.validate_identifier(table_name)
+        SQLValidator.validate_identifier(name)
         SQLValidator.validate_identifier(trigger_name)
         SQLValidator.validate_actions(action)
         SQLValidator.validate_timings(timing)
 
-        self.query = f"CREATE TRIGGER {'IF NOT EXISTS ' if can_exist else ''}{trigger_name} {timing.upper()} {action.upper()} ON {table_name} BEGIN {body.with_parameters()} END"
+        self.query = f"CREATE TRIGGER {'IF NOT EXISTS ' if can_exist else ''}{trigger_name} {timing.upper()} {action.upper()} ON {name} BEGIN {body.with_parameters()} END"

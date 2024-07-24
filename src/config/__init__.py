@@ -2,14 +2,15 @@
 import json
 import os
 from pathlib import Path
+from typing import List, Tuple, Any
 
 import yaml
 
 import src.exceptions as exceptions
 
-CONFIG_FOLDER = Path("src/config")
+CONFIG_FOLDER = Path("config")
 
-with open(CONFIG_FOLDER.joinpath("value_types"), "r", encoding="utf8") as f:
+with open(CONFIG_FOLDER.joinpath("value_types").absolute(), "r", encoding="utf8") as f:
     VALUE_TYPES = {key: eval(value) for key, value in [line.strip().split("=") for line in f.readlines()]}
 
 
@@ -74,6 +75,18 @@ class Config:
         else:
             raise exceptions.EnvFileNotFoundError(env_file)
 
+    def as_dict(self) -> dict:
+        return self._config
+
+    def items(self) -> dict.items:
+        return self.as_dict().items()
+
+    def keys(self) -> dict.keys:
+        return self.as_dict().keys()
+
+    def values(self) -> dict.values:
+        return self.as_dict().values()
+
     def __getitem__(self, item):
         try:
             value = self._config[item.lower()]
@@ -84,6 +97,7 @@ class Config:
             raise exceptions.ConfigurationNotSet(item)
 
     def __setitem__(self, key, value):
+        key = key.lower()
         if key in self._config:
             raise exceptions.ConfigurationNameCollisionError(key)
         self._validate_new_value(key, value)

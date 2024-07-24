@@ -2,16 +2,20 @@ import os
 import sqlite3
 
 from threading import Lock
-from typing import Union, List
+from typing import Union, List, TYPE_CHECKING
 
 from src.database.query_builder import Select, Insert, Update, Delete, CreateTable, Query, CreateTrigger
+
+if TYPE_CHECKING:
+    from src.config import Config
 
 __all__ = ["Engine"]
 
 
 class DatabaseConnection(sqlite3.Connection):
-    def __init__(self):
-        self.db_path = os.environ["DB_HOST"]
+    def __init__(self, conf: "Config") -> None:
+        self.conf = conf["Database"]
+        self.db_path = self.conf["db_host"]
         super().__init__(self.db_path)
         self.row_factory = sqlite3.Row
 
@@ -24,8 +28,14 @@ class DatabaseConnection(sqlite3.Connection):
     
 
 class Engine:
-    def __init__(self):
-        self.dbc = DatabaseConnection()
+    """
+    The Engine class is a singleton class that is responsible for managing the database connection. It is used to execute
+    queries and CRUD operations on the database.
+
+    It expects the database host as an environment variable.
+    """
+    def __init__(self, conf: "Config") -> None:
+        self.dbc = DatabaseConnection(conf)
         self.lock = Lock()
 
     # Query execution

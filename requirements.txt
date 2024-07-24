@@ -1,0 +1,2 @@
+PyYAML~=6.0.2rc1
+fastapi~=0.111.1

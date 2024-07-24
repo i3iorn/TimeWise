@@ -1,6 +1,15 @@
+import os
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+from . import custom_logging
 from .database.engine import Engine as Database
 from .secrets_manager import SecretsManager
 from threading import Lock
+from .config import Config
+
+
+logger = custom_logging.get_logger(name="TimeWise")
 
 
 class TimeWise:
@@ -21,6 +30,16 @@ class TimeWise:
                 cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, database: "Database", secrets_manager: "SecretsManager"):
-        self.database = database
-        self.secrets_manager = secrets_manager
+    def __init__(self):
+        os.environ["ROOT"] = str(Path(__file__).parent.parent.absolute())
+        self.conf = Config()
+        logger.info("Config loaded")
+
+        self.db = Database(self.conf),
+        self.secrets_manager = SecretsManager(project_name="TimeWise")
+
+        logger.info("TimeWise initialized")
+
+    @property
+    def version(self):
+        return

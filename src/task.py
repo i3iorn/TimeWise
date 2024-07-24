@@ -2,7 +2,7 @@ import datetime
 from dataclasses import dataclass, field
 from typing import List
 
-from src.category import Category
+from src.components import Category
 from src.components import Duration, Status, Tag, Priority, CustomField, Title, Description, RecurFrom
 
 

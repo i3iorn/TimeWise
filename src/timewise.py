@@ -60,6 +60,12 @@ class TimeWise:
 
     @property
     def api(self, ):
+        """
+        Get the API interface of the TimeWise application.
+
+        :return: APIInterface
+        :rtype: APIInterface
+        """
         return self._api_interface
 
     @property

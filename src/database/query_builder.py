@@ -157,6 +157,19 @@ class CanBeLimited:
         ...
 
     def limit(self, limit: int, offset: int = None):
+        """
+        Limit the number of rows returned by the query with an optional offset.
+
+        :param limit: The number of rows to limit the query to.
+        :type: int
+        :param offset: The offset to start the limit from.
+        :type: int
+
+        :raises QueryBuilderException: If the limit is less than or equal to 0 or the offset is less than 0.
+
+        :return: The query with the limit clause added.
+        :rtype: Query
+        """
         if limit > 0:
             self.parameters["limit"] = f"{self.query} LIMIT {limit}"
             if offset and offset > 0:
@@ -200,6 +213,21 @@ class CanBeFiltered:
         ...
 
     def where(self, conditions: dict = None, column: str = None, value: str = None):
+        """
+        Filter the query based on the conditions provided or the column and value provided.
+
+        :param conditions: A dictionary of conditions to filter the query by.
+        :type: dict
+        :param column: The column to filter by.
+        :type: str
+        :param value: The value to filter by.
+        :type: str
+
+        :raises QueryBuilderException: If an invalid column name is provided or no conditions are provided.
+
+        :return: The query with the where clause added.
+        :rtype: Query
+        """
         if conditions:
             [SQLValidator.validate_identifier(key) for key in conditions.keys()]
 
@@ -236,6 +264,21 @@ class CanBeJoined:
     :rtype: Query
     """
     def join(self, join_type: str, table: str, on: str):
+        """
+        Join the query with another table based on the join type and column provided.
+
+        :param join_type: The type of join to perform.
+        :type: str
+        :param table: The table to join.
+        :type: str
+        :param on: The column to join on.
+        :type: str
+
+        :raises QueryBuilderException: If an invalid join type is provided.
+
+        :return: The query with the join clause added.
+        :rtype: Query
+        """
         SQLValidator.validate_identifier(table)
         join_types = ["INNER", "LEFT OUTER", "RIGHT OUTER", "FULL OUTER"]
         if join_type.upper() not in join_types:
@@ -398,6 +441,11 @@ class Column:
     default: str = None
 
     def __post_init__(self):
+        """
+        Validate the column data.
+
+        :return: None
+        """
         SQLValidator.validate_identifier(self.name)
         SQLValidator.validate_identifier(self.default) if self.default else None
         SQLValidator.validate_data_type(self.data_type)

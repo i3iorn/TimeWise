@@ -56,23 +56,28 @@ class CustomFormatter(logging.Formatter):
         }
 
     def format(self, record):
+        """Format the log record"""
         log_fmt = self.FORMATS.get(record.levelno)
         formatter = logging.Formatter(log_fmt)
         return formatter.format(record)
 
     def formatException(self, ei):
+        """Format the exception"""
         result = super().formatException(ei)
         return f"{self.red}{result}{self.reset}"
 
     def formatMessage(self, record):
+        """Format the message"""
         result = super().formatMessage(record)
         return f"{self.blue}{result}{self.reset}"
 
     def formatStack(self, stack_info):
+        """Format the stack"""
         result = super().formatStack(stack_info)
         return f"{self.red}{result}{self.reset}"
 
     def formatTime(self, record, datefmt=None):
+        """Format the time"""
         result = super().formatTime(record, datefmt)
         return f"{self.grey}{result}{self.reset}"
 

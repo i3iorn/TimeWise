@@ -102,3 +102,11 @@ class ToManyArgumentsError(ApplicationError):
 
 class EnvFileNotFoundError(FileNotFoundError):
     pass
+
+
+class ConfigFileFormatError(ConfigurationError):
+    """
+    Raised when a configuration file is not in the correct format.
+    """
+    def __init__(self, file):
+        super().__init__(f"Configuration file '{file}' is not in the correct format.")

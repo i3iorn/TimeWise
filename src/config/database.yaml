@@ -1,0 +1,110 @@
+database:
+  tables:
+    groups:
+      name: groups
+      columns:
+        - name: id
+          data_type: INTEGER
+          primary_key: true
+          auto_increment: true
+        - name: name
+          data_type: TEXT
+      unique_constraints:
+        - - name
+    timewise_values:
+      name: timewise_values
+      columns:
+        - name: id
+          data_type: INTEGER
+          primary_key: true
+          auto_increment: true
+        - name: name
+          data_type: TEXT
+        - name: value
+          data_type: TEXT
+        - name: group_id
+          data_type: INTEGER
+      unique_constraints:
+        - - name
+      foreign_keys:
+        - column: group_id
+          references: groups
+          ref_column: id
+    tasks:
+      name: tasks
+      columns:
+        - name: id
+          data_type: INTEGER
+          primary_key: true
+          auto_increment: true
+        - name: title
+          data_type: TEXT
+        - name: description
+          data_type: TEXT
+          allow_null: true
+        - name: status_id
+          data_type: INTEGER
+        - name: category_id
+          data_type: INTEGER
+        - name: priority
+          data_type: INTEGER
+        - name: estimated_time
+          data_type: INTEGER
+          allow_null: true
+        - name: time_spent
+          data_type: INTEGER
+          allow_null: true
+        - name: due_date
+          data_type: TEXT
+          allow_null: true
+        - name: start_date
+          data_type: TEXT
+          allow_null: true
+        - name: completed
+          data_type: INTEGER
+      foreign_keys:
+        - column: category_id
+          references: categories
+          ref_column: id
+        - column: status_id
+          references: statuses
+          ref_column: id
+      check_constraints:
+        - constraint: priority
+          operator: ">="
+          value: "0"
+  default_values:
+    groups:
+      - name: tag
+      - name: category
+      - name: setting
+      - name: custom_field
+    settings:
+      - name: priority_min
+        value: "0"
+      - name: priority_max
+        value: "5"
+    categories:
+      - name: work
+        value: "Work"
+      - name: personal
+        value: "Personal"
+    intervals:
+      - name: minute
+        seconds: 60
+        description: "1 minute"
+      - name: hour
+        seconds: 3600
+        description: "1 hour"
+      - name: day
+        seconds: 86400
+        description: "1 day"
+      - name: week
+        seconds: 604800
+        description: "1 week"
+      - name: month
+        seconds: 2592000
+        description: "1 month"
+      - name: year
+        seconds: 31536000
+        description: "1 year"

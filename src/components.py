@@ -1,213 +1,137 @@
+from typing import Any
+from dataclasses import dataclass
 from enum import Enum
 
-MONTH_LENGTH = 30.4375  # Days in a month on average
-YEAR_LENGTH = 365.25    # Days in a year on average
 
-
-class TimeWiseValue:
-    @classmethod
-    def save(cls, db, value_type, value):
-        db.insert("timewise_values", name=cls.__name__, value_type=value_type, value=value)
-
-
-class Duration:
-    TIME_UNITS = ['years', 'months', 'days', 'hours', 'minutes', 'seconds']
-    MAX_VALUES = {'years': float('inf'), 'months': 12, 'days': 30.4375, 'hours': 24, 'minutes': 60, 'seconds': 60}
-    CONVERSION_FACTORS = {'years': YEAR_LENGTH * 86400, 'months': MONTH_LENGTH * 86400, 'days': 86400, 'hours': 3600, 'minutes': 60, 'seconds': 1}
-
-    def __init__(self, **kwargs):
-        self.time_units = {unit: 0 for unit in self.TIME_UNITS}
-        for unit, value in kwargs.items():
-            if unit in self.time_units:
-                self._adjust_time_units(unit, value)
-
-    def _adjust_time_units(self, unit, value):
-        if not isinstance(value, int) or value < 0:
-            raise ValueError("Duration values must be positive integers")
-        while value >= self.MAX_VALUES[unit]:
-            if unit == 'seconds':
-                value -= self.MAX_VALUES[unit]
-                self.time_units['minutes'] += 1
-            elif unit == 'minutes':
-                value -= self.MAX_VALUES[unit]
-                self.time_units['hours'] += 1
-            elif unit == 'hours':
-                value -= self.MAX_VALUES[unit]
-                self.time_units['days'] += 1
-            elif unit == 'days':
-                value -= self.MAX_VALUES[unit]
-                self.time_units['months'] += 1
-            elif unit == 'months':
-                value -= self.MAX_VALUES[unit]
-                self.time_units['years'] += 1
-        self.time_units[unit] += value
-
-    def __add__(self, other):
-        if not isinstance(other, Duration):
-            raise ValueError("Can only add Duration objects")
-        result = Duration()
-        for unit in self.TIME_UNITS:
-            result._adjust_time_units(unit, self.time_units[unit] + other.time_units[unit])
-        return result
-
-    def __sub__(self, other):
-        self_seconds = self.as_seconds()
-        other_seconds = other.as_seconds()
-        result_seconds = self_seconds - other_seconds
-
-        if result_seconds < 0:
-            raise ValueError("Resulting duration cannot have negative values")
-
-        return Duration.from_seconds(result_seconds)
+class ValueID:
+    """
+    This class is used to generate unique IDs for values.
+    """
+    _id = 0
 
     @classmethod
-    def from_seconds(cls, total_seconds):
-        time_units_values = {'years': 0, 'months': 0, 'days': 0, 'hours': 0, 'minutes': 0, 'seconds': 0}
-        # Conversion factors need to be in descending order of duration
-        conversion_factors = reversed(cls.CONVERSION_FACTORS.items())
-
-        for unit, factor in conversion_factors:
-            unit_value, total_seconds = divmod(total_seconds, factor)
-            time_units_values[unit] = int(unit_value)
-
-        return cls(**time_units_values)
-
-    def as_seconds(self):
-        return sum(self.time_units[unit] * factor for unit, factor in self.CONVERSION_FACTORS.items())
-
-    def __str__(self):
-        return ''.join(f"{value}{unit[0].upper()}" for unit, value in self.time_units.items() if value > 0)
+    def generate_id(cls) -> int:
+        """
+        Generate a unique ID.
+        """
+        cls._id += 1
+        return cls._id
 
 
-class Title(TimeWiseValue, str):
+class TimeWiseValueManager:
     """
-    Title of a task
+    This class is used to manage the values of the application. All values in the application register with this class.
+
+    # Features
+    - Singleton
+    - Value registration
+
+    # Properties
+    - values: A dictionary of all values in the application.
     """
-    def __new__(cls, value):
-        if not value:
-            raise ValueError("Title cannot be empty")
-        if len(value) > 127:
-            raise ValueError("Title cannot exceed 255 characters")
+    _instance = None
 
-        return super().__new__(cls, value)
+    def __new__(cls, *args, **kwargs) -> "TimeWiseValueManager":
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+
+        return cls._instance
+
+    def __init__(self) -> None:
+        self.values = {}
+        self.monitors = []
+
+    def register_value(self, value: "BaseTimeWiseComponent") -> None:
+        """
+        Register a value with the value manager.
+        """
+        self.values[value.id] = value
+
+    def emit_event(self, event_type: "EventType", value_id: int, old_value: Any, new_value: Any) -> None:
+        """
+        Emit an event to all registered monitors.
+        """
+        event = Event(event_type, value_id, old_value, new_value)
+        for monitor in self.monitors:
+            monitor.handle_event(event)
+
+    def register_monitor(self, monitor: "Monitor") -> None:
+        """
+        Register a monitor with the value manager.
+        """
+        self.monitors.append(monitor)
+
+    def unregister_monitor(self, monitor: "Monitor") -> None:
+        """
+        Unregister a monitor with the value manager.
+        """
+        self.monitors.remove(monitor)
 
 
-class Description(TimeWiseValue, str):
+class EventType(Enum):
+    VALUE_CHANGED = "value_changed"
+    VALUE_DELETED = "value_deleted"
+    VALUE_ADDED = "value_added"
+
+
+@dataclass
+class Event:
     """
-    Description of a task
+    This class is used to represent an event in the application.
+
+    # Properties
+    - event: The type of event.
+    - value_id: The ID of the value that triggered the event.
+    - new_value: The new value of the value that triggered the event.
     """
-    def __new__(cls, value):
-        if not value:
-            raise ValueError("Description cannot be empty")
-        if len(value) > 1024:
-            raise ValueError("Description cannot exceed 1024 characters")
-
-        return super().__new__(cls, value)
+    event: EventType
+    value_id: int
+    old_value: Any
+    new_value: Any
 
 
-class CustomField(TimeWiseValue):
-    def __new__(cls, *args, **kwargs):
-        try:
-            name = kwargs.pop('name')
-            value = kwargs.pop('value')
-            value_type = kwargs.pop('type')
-        except KeyError:
-            raise ValueError("CustomField requires 'name', 'value', and 'type' arguments")
+class BaseTimeWiseComponent:
+    """
+    This component is the base for all values and components in the application. It is used to enable event handling.
 
-        if not name:
-            raise ValueError("CustomField name cannot be empty")
-        if not value:
-            raise ValueError("CustomField value cannot be empty")
-        if not value_type:
-            raise ValueError("CustomField type cannot be empty")
-
-        if len(args) > 0:
-            raise ValueError("CustomField only accepts keyword arguments")
-        if len(kwargs) > 0:
-            raise ValueError("CustomField only accepts 'name', 'value', and 'type' keyword arguments")
-
-        try:
-            type_function = getattr(__builtins__, value_type)
-        except AttributeError:
-            raise ValueError(f"CustomField type {value_type} is not a valid type")
-
-        try:
-            value = type_function(value)
-        except ValueError:
-            raise ValueError(f"CustomField value {value} is not a valid {value_type}")
-
-        return super().__new__(cls, name, value, value_type)
-
-    def __init__(self, name, value, value_type):
-        self._name = name
+    # Features
+    - Event handling
+    - Value validation
+    - Value setting
+    - Value getting
+    """
+    def __init__(self, value: Any) -> None:
+        self._manager = TimeWiseValueManager()
+        self._id = ValueID.generate_id()
         self._value = value
-        self._value_type = value_type
+        self._manager.register_value(self)
 
-    def __str__(self):
-        return f"{self.name}: {self.value}"
+    @property
+    def id(self) -> int:
+        return self._id
 
-    def __repr__(self):
-        return f"{self.name}: {self.value}"
+    @id.setter
+    def id(self, value: int) -> None:
+        raise AttributeError("ID cannot be changed")
 
-    def __eq__(self, other):
-        return self.name == other.name and self.value == other.value and self.value_type == other.value_type
-
-    def __set__(self, instance, value):
-        raise AttributeError("CustomField values cannot be altered. Create a new CustomField instead or set the value.")
-
-    def __get__(self, instance, owner):
+    def __get__(self, instance, owner) -> Any:
         return self._value
 
-    @property
-    def name(self):
-        return self._name
-
-    @property
-    def value(self):
-        return self._value
-
-    @value.setter
-    def value(self, value):
-        try:
-            value = self.value_type(value)
-        except ValueError:
-            raise ValueError(f"CustomField value {value} is not a valid {self.value_type}")
+    def __set__(self, instance, value) -> None:
         self._value = value
-
-    @property
-    def value_type(self):
-        return self._value_type
+        self._manager.emit_event(EventType.VALUE_CHANGED, self.id, self._value, value)
 
 
-class RecurFrom(TimeWiseValue, Enum):
-    DUE_DATE = "Due Date"
-    COMPLETION_DATE = "Completion Date"
-    START_DATE = "Start Date"
+class Monitor:
+    """
+    This class is used to monitor the values of the application. It listens for events and updates the UI accordingly.
 
+    # Features
+    - Event listening
+    """
+    def __init__(self) -> None:
+        self._manager = TimeWiseValueManager()
+        self._manager.register_monitor(self)
 
-class Tag(TimeWiseValue, str):
-    def __new__(cls, value):
-        if not value:
-            raise ValueError("Tag cannot be empty")
-        if len(value) > 127:
-            raise ValueError("Tag cannot exceed 127 characters")
-
-        return super().__new__(cls, value)
-
-
-class Status(TimeWiseValue, str):
-    def __new__(cls, value):
-        if not value:
-            raise ValueError("Status cannot be empty")
-        if len(value) > 127:
-            raise ValueError("Status cannot exceed 127 characters")
-
-        return super().__new__(cls, value)
-
-
-class Priority(TimeWiseValue):
-    pass
-
-
-class Category(TimeWiseValue):
-    pass
+    def event_handler(self, event: "Event") -> None:
+        raise NotImplementedError("Event handler must be implemented in subclass")

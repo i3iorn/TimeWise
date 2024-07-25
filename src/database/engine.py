@@ -70,7 +70,7 @@ class Engine:
         parameters: dict = None,
         commit: bool = True,
         fetch_method: str = None
-    ):
+    ) -> Union[Row, Cursor, List[Row], int, None]:
         """
         Execute a query on the database
 
@@ -86,7 +86,7 @@ class Engine:
         :raise sqlite3.Error: If the query execution fails
 
         :return: The result of the query
-        :rtype: Union[sqlite3.Row, sqlite3.Cursor, List[sqlite3.Row], int]
+        :rtype: Union[sqlite3.Row, sqlite3.Cursor, List[sqlite3.Row], int, None]
         """
         with self.lock:
             try:
@@ -107,7 +107,7 @@ class Engine:
                 return fm()
             return None
 
-    def execute(self, query: "Query") -> _SpecialForm[Row, Cursor, list[Row], int]:
+    def execute(self, query: "Query") -> Union[sqlite3.Row, sqlite3.Cursor, List[sqlite3.Row], int]:
         """
         Execute a query on the database using the Query object
 
@@ -119,7 +119,7 @@ class Engine:
         """
         return self._execute(query.query, query.parameters)
 
-    def crud(self, fetch_method, **kwargs) -> _SpecialForm[Row, Cursor, list[Row], int]:
+    def crud(self, fetch_method, **kwargs) -> Union[sqlite3.Row, sqlite3.Cursor, List[sqlite3.Row], int]:
         """
         Execute a CRUD operation on the database using the provided keyword arguments
 
@@ -247,7 +247,7 @@ class Engine:
         :rtype: None
         """
         query = CreateTrigger(**kwargs)
-        return self._execute(query.query, query.parameters)
+        return self._execute(query.query, {})
 
     def show_tables(self) -> list:
         """
@@ -275,4 +275,4 @@ class TimeWiseEngine(Engine):
     TimeWiseEngine is a subclass of Engine that is responsible for managing the database connection for the TimeWise
     """
     def get_tasks(self):
-        return self.select(table="tasks")
+        return self.select("tasks")

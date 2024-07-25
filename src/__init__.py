@@ -11,7 +11,6 @@ if __name__ == '__main__':
 
     app = TimeWise()
     task = app.add_task("MyFirstTask")
-    print(task)
 
     profiler.disable()
     stats = pstats.Stats(profiler)

@@ -1,9 +1,11 @@
 import os
+import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Union
 
 from src.components.base import BaseTimeWiseComponent, String, Time, DateTime
+from src.helpers import get_app
 
 
 class Title(String):
@@ -40,12 +42,32 @@ class Description(String):
                 raise ValueError("Description must be less than 1000 characters")
 
 
+class TimeWiseEnum:
+    def __init__(self, **entries):
+        self.__dict__.update(entries)
+
+    def __getitem__(self, item):
+        return self.__dict__[item]
+
+    def __iter__(self):
+        return iter({key for key in self.__dict__ if not key.startswith("__")})
+
+    def __call__(self, item):
+        if item in self.__dict__.values():
+            return [key for key, value in self.__dict__.items() if value == item][0]
+        else:
+            return None
+
+    def __str__(self):
+        return str({key for key in self.__dict__ if not key.startswith("__")})
+
+
 @dataclass
 class Task(BaseTimeWiseComponent):
     title: Title
     description: Description = None
-    category: Category = None
-    status: Status = Status("Not Started")
+    category: str = None
+    status: str = "Not Started"
     created_at: Time = DateTime(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     updated_at: Time = DateTime(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     deleted_at: Time = None
@@ -55,6 +77,21 @@ class Task(BaseTimeWiseComponent):
         Individual values are validated when set in each property. This method is used to validate relationships between
         values.
         """
+
+        categories = get_app().db.get_categories
+        statuses = get_app().db.get_statuses
+
+        Category = TimeWiseEnum(**{category.upper(): category for category in categories})
+        Status = TimeWiseEnum(**{status.upper(): status for status in statuses})
+
+        if self.category is not None:
+            if self.category not in Category:
+                raise ValueError(f"Category must be one of {Category}")
+
+        if self.status is not None:
+            if self.status not in Status:
+                raise ValueError(f"Status must be one of {Status}")
+
         if self.created_at > self.updated_at:
             raise ValueError("Created at cannot be after updated at")
 
@@ -77,7 +114,7 @@ class Task(BaseTimeWiseComponent):
             elif key == "description":
                 dictionary[key] = Description(value)
             elif key == "status":
-                dictionary[key] = Status(value)
+                dictionary[key] = value
 
         if len(data) > 0:
             raise ValueError("Unknown keys in dictionary")

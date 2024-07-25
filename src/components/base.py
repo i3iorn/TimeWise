@@ -1,11 +1,14 @@
 import inspect
 import os
 from datetime import datetime
-from typing import Any, Union
+from typing import Any, Union, TYPE_CHECKING
 
 from src import exceptions
-from src.timewise import TimeWise
-from src.components.events import EventType, Event, ValueChange
+from src.components.events import Event, ValueChange
+from src.helpers import get_app
+
+if TYPE_CHECKING:
+    from src.timewise import TimeWise
 
 __all__ = [
     "TimeWiseValueManager",
@@ -106,17 +109,7 @@ class BaseTimeWiseComponent:
         self._value = value
         self._manager.register_value(self)
 
-        if self._app is None:
-            frame = inspect.currentframe()
-            while frame is not None:
-                frame = frame.f_back
-                if "f_locals" not in frame.__dir__() or "self" not in frame.f_locals:
-                    continue
-                if frame.f_locals["self"].__class__.__name__ == "TimeWise":
-                    break
-
-            if frame is not None:
-                self._app = frame.f_locals.get('self', None)
+        self._app = get_app()
 
     def _validate_value(self, value: Any) -> None:
         """
@@ -296,9 +289,9 @@ class Dict(BaseTimeWiseComponent):
             raise exceptions.DictException("Value must be a dictionary")
 
         for key, value in value.items():
-            if isinstance(key, callable):
+            if isinstance(key, type(callable)):
                 raise exceptions.DictException("Dictionary keys cannot be callable")
-            if isinstance(value, callable):
+            if isinstance(value, type(callable)):
                 raise exceptions.DictException("Dictionary values cannot be callable")
 
         if "DICT_MAX_LENGTH" in os.environ:
@@ -321,6 +314,9 @@ class Dict(BaseTimeWiseComponent):
             return 0
 
         return 1 + max(self._get_depth(value) for value in dictionary.values())
+
+    def __getitem__(self, item):
+        return self._value[item]
 
 
 class Time(BaseTimeWiseComponent):

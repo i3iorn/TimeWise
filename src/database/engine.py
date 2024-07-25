@@ -3,8 +3,9 @@ import sqlite3
 from sqlite3 import Row, Cursor
 
 from threading import Lock
-from typing import Union, List, TYPE_CHECKING, _SpecialForm
+from typing import Union, List, TYPE_CHECKING
 
+from src.components.base import Dict
 from src.config import ConfigFlag
 from src.database.query_builder import Select, Insert, Update, Delete, CreateTable, Query, CreateTrigger
 
@@ -36,7 +37,7 @@ class DatabaseConnection(sqlite3.Connection):
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.commit()
         self.close()
-    
+
 
 class Engine:
     """
@@ -47,6 +48,7 @@ class Engine:
     """
     def __init__(self, conf: "Config") -> None:
         self.dbc = DatabaseConnection(conf)
+        self.cursor = self.dbc.cursor()
         self.lock = Lock()
 
         self._config = conf["Database"]
@@ -63,51 +65,15 @@ class Engine:
             for trigger in self._config["triggers"]:
                 self.create_trigger(**trigger)
 
-    # Query execution
-    def _execute(
-        self,
-        query: str,
-        parameters: dict = None,
-        commit: bool = True,
-        fetch_method: str = None
-    ) -> Union[Row, Cursor, List[Row], int, None]:
-        """
-        Execute a query on the database
+        if "initial_values" in self._config:
+            for table, values in self._config["initial_values"].items():
+                for value in values:
+                    self.insert(table_name=table, **value)
 
-        :param query: The query to execute
-        :type query: str
-        :param parameters: The parameters to pass to the query
-        :type parameters: dict
-        :param commit: Whether to commit the transaction
-        :type commit: bool
-        :param fetch_method: The fetch method to use
-        :type fetch_method: str
+        print(self.select(table_name="groups"))
+        print(self.select(table_name="timewise_values"))
 
-        :raise sqlite3.Error: If the query execution fails
-
-        :return: The result of the query
-        :rtype: Union[sqlite3.Row, sqlite3.Cursor, List[sqlite3.Row], int, None]
-        """
-        with self.lock:
-            try:
-                if parameters:
-                    self.dbc.execute(query, parameters)
-                else:
-                    self.dbc.execute(query)
-            except sqlite3.Error as e:
-                print(query)
-                print(parameters)
-                raise e
-
-            if commit:
-                self.dbc.commit()
-
-            if fetch_method:
-                fm = getattr(self.dbc.cursor, fetch_method)
-                return fm()
-            return None
-
-    def execute(self, query: "Query") -> Union[sqlite3.Row, sqlite3.Cursor, List[sqlite3.Row], int]:
+    def execute(self, query: "Query") -> Cursor:
         """
         Execute a query on the database using the Query object
 
@@ -117,25 +83,26 @@ class Engine:
         :return: The result of the query
         :rtype: sqlite3.Cursor
         """
-        return self._execute(query.query, query.parameters)
+        print(query.with_parameters())
+        return self.cursor.execute(query.query, query.parameters)
 
-    def crud(self, fetch_method, **kwargs) -> Union[sqlite3.Row, sqlite3.Cursor, List[sqlite3.Row], int]:
+    def crud(self, crud_type, **kwargs) -> Union[sqlite3.Row, sqlite3.Cursor, List[sqlite3.Row], int]:
         """
         Execute a CRUD operation on the database using the provided keyword arguments
 
-        :param fetch_method: The fetch method to use
-        :type fetch_method: str
+        :param crud_type: The CRUD operation to execute
+        :type crud_type: class
         :param kwargs: The keyword arguments to pass to the CRUD operation
         :type kwargs: dict
 
         :return: The result of the CRUD operation
         :rtype: Union[sqlite3.Row, sqlite3.Cursor, List[sqlite3.Row], int]
         """
-        query = Select(**kwargs)
-        return self._execute(query.query, query.parameters, fetch_method=fetch_method)
+        query = crud_type(**kwargs)
+        return self.execute(query)
 
     # CRUD operations
-    def select(self, **kwargs) -> List["sqlite3.Row"]:
+    def select(self, **kwargs) -> List[Dict]:
         """
         Select rows from the database
 
@@ -143,20 +110,30 @@ class Engine:
         :type kwargs: dict
 
         :return: The selected rows
-        :rtype: List[sqlite3.Row]
+        :rtype: List[Dict]
         """
-        return self.crud("fetchall", **kwargs)
+        table = kwargs.get("table_name")
+        column_names = {
+            i: row[1] for i, row in enumerate(self.cursor.execute(f"PRAGMA table_info({table});").fetchall())
+        }
+        if not column_names:
+            column_names = {
+                i: row[1] for i, row in enumerate(self.cursor.execute(f"PRAGMA pragma_view_info({table});").fetchall())
+            }
 
-    def select_one(self, **kwargs) -> "sqlite3.Row":
+        results = self.crud(Select, **kwargs).fetchall()
+        return [Dict({column_names[i]: val for i, val in enumerate(row)}) for row in results]
+
+    def select_one(self, **kwargs) -> Dict:
         """
         Select one row from the database
 
         :param kwargs: The keyword arguments to pass to the select operation
         :type kwargs: dict
         :return: The selected row
-        :rtype: sqlite3.Row
+        :rtype: Dict
         """
-        return self.crud("fetchone", **kwargs)
+        return self.select(**kwargs)[0]
 
     def insert(self, **kwargs) -> int:
         """
@@ -167,7 +144,7 @@ class Engine:
         :return: The last row id
         :rtype: int
         """
-        return self.crud("lastrowid", **kwargs)
+        return self.crud(Insert, **kwargs).lastrowid
 
     def update(self, **kwargs) -> int:
         """
@@ -178,7 +155,7 @@ class Engine:
         :return: The number of rows updated
         :rtype: int
         """
-        return self.crud("rowcount", **kwargs)
+        return self.crud(Update, **kwargs).rowcount
 
     def delete(self, **kwargs) -> int:
         """
@@ -189,7 +166,7 @@ class Engine:
         :return: The number of rows deleted
         :rtype: int
         """
-        return self.crud("rowcount", **kwargs)
+        return self.crud(Delete, **kwargs).rowcount
 
     # Table management
     def create_table(self, **kwargs) -> None:
@@ -202,20 +179,20 @@ class Engine:
         :rtype: None
         """
         query = CreateTable(**kwargs)
-        return self._execute(query.query, query.parameters)
+        self.execute(query)
 
-    def create_view(self, name: str, **kwargs) -> None:
+    def create_view(self, view_name: str, **kwargs) -> None:
         """
         Create a view in the database using the provided keyword arguments
 
-        :param name: The name of the view
-        :type name: str
+        :param table: The name of the view
+        :type view_name: str
         :param kwargs: The keyword arguments to pass to the create view operation
         :type kwargs: dict
         :return: None
         :rtype: None
         """
-        if not name:
+        if not view_name:
             raise ValueError("View name must be provided and cannot be empty.")
 
         # Assuming 'can_exist' is an optional boolean parameter in kwargs
@@ -224,18 +201,19 @@ class Engine:
         filter = kwargs.pop("filter", None)
 
         # Construct the SELECT statement part of the view creation
-        select_statement = Select(name=kwargs.pop("source"), **kwargs).with_parameters()
+        select_statement = Select(table_name=kwargs.pop("source"), **kwargs).with_parameters()
 
         # Construct the full CREATE VIEW statement
-        create_view_statement = f"CREATE VIEW {view_existence_clause}{name} AS {select_statement}"
+        create_view_statement = f"CREATE VIEW {view_existence_clause}{view_name} AS {select_statement}"
         if filter:
             create_view_statement += f" WHERE {filter}"
+        create_view_statement += ";"
 
         try:
-            self._execute(create_view_statement)
+            self.dbc.execute(create_view_statement)
         except sqlite3.Error as e:
             # Handle specific database errors if needed
-            raise RuntimeError(f"Failed to create view '{name}': {e}")
+            raise RuntimeError(f"Failed to create view '{view_name}': {e}")
 
     def create_trigger(self, **kwargs) -> None:
         """
@@ -247,7 +225,7 @@ class Engine:
         :rtype: None
         """
         query = CreateTrigger(**kwargs)
-        return self._execute(query.query, {})
+        self.dbc.execute(query.query)
 
     def show_tables(self) -> list:
         """
@@ -257,7 +235,7 @@ class Engine:
         :rtype: list
         """
         query = "SELECT name FROM sqlite_master WHERE type='table';"
-        return self._execute(query, fetch_method="fetchall")
+        return self.dbc.execute(query).fetchall()
 
     def show_views(self) -> list:
         """
@@ -267,12 +245,19 @@ class Engine:
         :rtype: list
         """
         query = "SELECT name FROM sqlite_master WHERE type='view';"
-        return self._execute(query, fetch_method="fetchall")
+        return self.dbc.execute(query).fetchall()
+
+    def __getattr__(self, item):
+        if item.startswith("get_"):
+            attribute = item[4:]
+            items = self.select(table_name=attribute)
+            print(items)
+            return items
+        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{item}'")
 
 
 class TimeWiseEngine(Engine):
     """
     TimeWiseEngine is a subclass of Engine that is responsible for managing the database connection for the TimeWise
     """
-    def get_tasks(self):
-        return self.select("tasks")
+    pass

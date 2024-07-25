@@ -1,67 +1,85 @@
 database:
   db_host: ":memory:"
   tables:
-    groups:
-      name: groups
+    intervals:
+      table_name: intervals
       columns:
-        - name: id
+        - column_name: id
           data_type: INTEGER
           primary_key: true
           auto_increment: true
-        - name: name
+        - column_name: name
+          data_type: TEXT
+        - column_name: seconds
+          data_type: INTEGER
+        - column_name: short_suffix
+          data_type: TEXT
+        - column_name: medium_suffix
+          data_type: TEXT
+      unique_constraints:
+        - - name
+          - seconds
+    groups:
+      table_name: groups
+      columns:
+        - column_name: id
+          data_type: INTEGER
+          primary_key: true
+          auto_increment: true
+        - column_name: name
           data_type: TEXT
       unique_constraints:
         - - name
     timewise_values:
-      name: timewise_values
+      table_name: timewise_values
       columns:
-        - name: id
+        - column_name: id
           data_type: INTEGER
           primary_key: true
           auto_increment: true
-        - name: name
+        - column_name: key
           data_type: TEXT
-        - name: value
+        - column_name: value
           data_type: TEXT
-        - name: group_id
+        - column_name: group_id
           data_type: INTEGER
       unique_constraints:
-        - - name
+        - - key
       foreign_keys:
         - column: group_id
           references: groups
           ref_column: id
     tasks:
-      name: tasks
+      table_name: tasks
       columns:
-        - name: id
+        - column_name: id
           data_type: INTEGER
           primary_key: true
           auto_increment: true
-        - name: title
+        - column_name: title
           data_type: TEXT
-        - name: description
-          data_type: TEXT
-          allow_null: true
-        - name: status_id
-          data_type: INTEGER
-        - name: category_id
-          data_type: INTEGER
-        - name: priority
-          data_type: INTEGER
-        - name: estimated_time
-          data_type: INTEGER
-          allow_null: true
-        - name: time_spent
-          data_type: INTEGER
-          allow_null: true
-        - name: due_date
+        - column_name: description
           data_type: TEXT
           allow_null: true
-        - name: start_date
+        - column_name: status_id
+          data_type: INTEGER
+        - column_name: category_id
+          data_type: INTEGER
+        - column_name: priority
+          data_type: INTEGER
+        - column_name: estimated_time
+          data_type: INTEGER
+          allow_null: true
+        - column_name: time_spent
+          data_type: INTEGER
+          allow_null: true
+        - column_name: due_date
           data_type: TEXT
           allow_null: true
-        - name: completed
+        - column_name: start_date
+          data_type: TEXT
+          allow_null: true
+        - column_name: completed
           data_type: INTEGER
       foreign_keys:
         - column: category_id
@@ -80,56 +98,77 @@ database:
       - name: category
       - name: setting
       - name: custom_field
-    settings:
-      - name: priority_min
+      - name: status
+    timewise_values:
+      - key: priority_min
         value: "0"
-      - name: priority_max
+      - key: priority_max
         value: "5"
-    categories:
-      - name: work
+      - key: work
         value: "Work"
-      - name: personal
+      - key: personal
         value: "Personal"
+      - key: open
+        value: "Open"
+      - key: in_progress
+        value: "InProgress"
+      - key: on_hold
+        value: "OnHold"
+      - key: completed
+        value: "Completed"
+      - key: canceled
+        value: "Canceled"
+        group_id:
+          table_name: groups
+          columns:
+            - id
+          conditions:
+            name: "status"
     intervals:
+      - name: second
+        seconds: 1
+        short_suffix: "s"
+        medium_suffix: "sec"
       - name: minute
         seconds: 60
-        description: "1 minute"
+        short_suffix: "m"
+        medium_suffix: "min"
       - name: hour
         seconds: 3600
-        description: "1 hour"
+        short_suffix: "h"
+        medium_suffix: "hr"
       - name: day
         seconds: 86400
-        description: "1 day"
+        short_suffix: "d"
+        medium_suffix: "day"
       - name: week
         seconds: 604800
-        description: "1 week"
+        short_suffix: "w"
+        medium_suffix: "wk"
       - name: month
         seconds: 2592000
-        description: "1 month"
+        short_suffix: "mo"
+        medium_suffix: "mon"
       - name: year
         seconds: 31536000
-        description: "1 year"
-    statuses:
-      - name: open
-        value: "Open"
-      - name: in_progress
-        value: "In Progress"
-      - name: on_hold
-        value: "On Hold"
-      - name: completed
-        value: "Completed"
-      - name: canceled
-        value: "Canceled"
+        short_suffix: "y"
+        medium_suffix: "yr"
   views:
-    - name: tags
+    - view_name: tags
       source: timewise_values
-      filter: "group_id = (SELECT id FROM groups WHERE name = 'tag')"
-    - name: categories
+      filter: "group_id = (SELECT id FROM groups WHERE key = 'tag')"
+    - view_name: categories
       source: timewise_values
-      filter: "group_id = (SELECT id FROM groups WHERE name = 'category')"
-    - name: settings
+      filter: "group_id = (SELECT id FROM groups WHERE key = 'category')"
+    - view_name: settings
       source: timewise_values
-      filter: "group_id = (SELECT id FROM groups WHERE name = 'setting')"
-    - name: custom_fields
+      filter: "group_id = (SELECT id FROM groups WHERE key = 'setting')"
+    - view_name: custom_fields
       source: timewise_values
-      filter: "group_id = (SELECT id FROM groups WHERE name = 'custom_field')"
+      filter: "group_id = (SELECT id FROM groups WHERE key = 'custom_field')"
+    - view_name: statuses
+      source: timewise_values
+      filter: "group_id = (SELECT id FROM groups WHERE key = 'status')"
+    - view_name: priorities
+      source: timewise_values
+      filter: "group_id = (SELECT id FROM groups WHERE key = 'priority')"

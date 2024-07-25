@@ -2,11 +2,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
-class EventType:
-    def __new__(cls, *args, **kwargs):
-        raise TypeError("Cannot instantiate EventType class")
-
-
 @dataclass
 class Event:
     """

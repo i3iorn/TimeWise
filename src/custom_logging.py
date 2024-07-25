@@ -87,7 +87,7 @@ class CustomConsoleHandler(logging.StreamHandler):
 
     def __init__(self):
         super().__init__()
-        self.setFormatter(CustomFormatter(fmt="%(asctime)s - %(levelname)8s - %(message)s"))
+        self.setFormatter(CustomFormatter(fmt="%(levelname)-10s%(message)s"))
 
 
 class CustomLogger(logging.Logger):

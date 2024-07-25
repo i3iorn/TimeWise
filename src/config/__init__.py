@@ -5,7 +5,7 @@ the configuration values in a dictionary. The configuration values can be access
 configuration values can be nested dictionaries.
 
 """
-
+import importlib.util
 import json
 import os
 from enum import Enum
@@ -16,7 +16,7 @@ import yaml
 
 import src.exceptions as exceptions
 
-CONFIG_FOLDER = Path("src/config")
+CONFIG_FOLDER = Path("config")
 
 TYPE_MAPPING = {
     "str": str,
@@ -36,6 +36,14 @@ class ConfigFlag(Enum):
     DEEP_VALIDATION = 2
 
 
+def get_package_root():
+    spec = importlib.util.find_spec(__package__)
+    if spec and spec.origin:
+        return Path(spec.origin).parent.parent.parent.absolute()
+    else:
+        raise RuntimeError("Cannot determine the package root directory")
+
+
 # Read all config files and set the environment variables
 class Config:
     """
@@ -48,7 +56,7 @@ class Config:
         self.flags = set()
 
         # Find the root directory and set the environment variable
-        os.environ["ROOT"] = str(Path(__file__).parent.parent.absolute())
+        os.environ["ROOT"] = str(get_package_root())
 
         if args:
             if not isinstance(args[0], dict):
@@ -108,7 +116,10 @@ class Config:
 
             if "environment" in self._config:
                 for key, value in self._config["environment"].items():
-                    os.environ[key.upper()] = value
+                    try:
+                        os.environ[key.upper()] = str(value)
+                    except TypeError as e:
+                        raise exceptions.ConfigValueTypeError(key, str, type(value)) from e
 
     def _validate_new_value(self, key: str, value: str, parent: str = "") -> None:
         """

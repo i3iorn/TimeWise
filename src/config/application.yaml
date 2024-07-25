@@ -1,13 +1,12 @@
 application:
-  name: TimeWise,
-  version: 0.1.0,
+  name: TimeWise
+  version: 0.1.0
   description: TimeWise is a task management application that allows users to create, update, and delete tasks. Users can also categorize tasks, set priorities, and track time spent on tasks.
-  author: Björn Schrammel,
-  email: timewise@schrammel.dev,
-  license: MIT,
+  author: Björn Schrammel
+  email: timewise@schrammel.dev
+  license: MIT
 environment:
-  statuses:
-    Not Started, In Progress, Completed, On Hold, Canceled
-  string_max_length: 4000,
-  title_max_length: 50,
-  description_max_length: 4000,
+  statuses: Not Started, In Progress, Completed, On Hold, Canceled
+  string_max_length: 4000
+  title_max_length: 50
+  description_max_length: 4000

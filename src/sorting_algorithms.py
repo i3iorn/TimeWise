@@ -1,7 +1,6 @@
 from typing import List, Tuple, Union
 
-from src.components import Task
-
+from src.components.task import Task
 
 OPERATORS = ["==", "!=", ">", "<", ">=", "<=", "+", "-", "*", "/", "**", "%", "//", "in", "not in", "is", "is not"]
 

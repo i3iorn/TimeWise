@@ -106,6 +106,10 @@ class Config:
 
             self._config.update(conf)
 
+            if "environment" in self._config:
+                for key, value in self._config["environment"].items():
+                    os.environ[key.upper()] = value
+
     def _validate_new_value(self, key: str, value: str, parent: str = "") -> None:
         """
         Validate a new configuration value before adding it to the configuration dictionary. This method is recursive

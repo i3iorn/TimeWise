@@ -5,3 +5,9 @@ application:
   author: Björn Schrammel,
   email: timewise@schrammel.dev,
   license: MIT,
+environment:
+  statuses:
+    Not Started, In Progress, Completed, On Hold, Canceled
+  string_max_length: 4000,
+  title_max_length: 50,
+  description_max_length: 4000,

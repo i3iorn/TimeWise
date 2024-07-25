@@ -110,3 +110,18 @@ class ConfigFileFormatError(ConfigurationError):
     """
     def __init__(self, file):
         super().__init__(f"Configuration file '{file}' is not in the correct format.")
+
+
+class TitleException(ValueError):
+    """
+    Base class for exceptions related to the title of a task.
+    """
+    pass
+
+
+class ToLongTitleException(TitleException):
+    """
+    Raised when a title is too long.
+    """
+    def __init__(self, title_length, max_length):
+        super().__init__(f"Title is {title_length} characters long, but must be less than {max_length} characters.")

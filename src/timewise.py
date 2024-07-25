@@ -4,6 +4,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from . import custom_logging
+from .components.task import Task
+from .components.base import TimeWiseValueManager
 from .database.engine import TimeWiseEngine as Database
 from .secrets_manager import SecretsManager
 from threading import Lock
@@ -56,6 +58,8 @@ class TimeWise:
         self.secrets_manager = SecretsManager(project_name="TimeWise")
         self._api_interface = APIInterface(self)
 
+        self._value_manager = TimeWiseValueManager()
+
         logger.info("TimeWise initialized")
 
     @property
@@ -78,4 +82,8 @@ class TimeWise:
 
     @property
     def version(self):
-        return self.conf._config["version"]
+        return self.conf._config["application"]["version"]
+
+    def add_task(self, task_name: str, **kwargs):
+        task = Task.from_dict({"title": task_name, **kwargs})
+        return task

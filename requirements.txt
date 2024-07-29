@@ -1,2 +1,3 @@
 PyYAML~=6.0.2rc1
-fastapi~=0.111.1
+SQLAlchemy~=2.0.31
+typeguard~=4.3.0

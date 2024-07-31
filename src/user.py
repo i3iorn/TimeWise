@@ -11,7 +11,7 @@ class User(MonitorableMixin, BaseComponent):
     """
 
     @classmethod
-    def _validate(cls,value: str) -> None:
+    def _validate(cls, value: str) -> None:
         """
         Validates the user.
 

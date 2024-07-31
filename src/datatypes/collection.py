@@ -4,7 +4,7 @@ import logging
 from typeguard import typechecked
 
 from src.base import BaseComponent
-from src.datatypes.base import TMValueMixin
+from src.datatypes.mixins import TMValueMixin
 
 if TYPE_CHECKING:
     from src.datatypes.types import Tag, Reminder, Participant, Attachment
@@ -14,19 +14,19 @@ logger = logging.getLogger(__name__)
 
 
 @typechecked
-class TimeWiseCollection(BaseComponent):
-    """
-    A class to represent a collection of TimeWise datatypes.
-    Inherits from BaseComponent to provide unique ComponentID and setup/teardown methods.
-    """
-    pass
-
-
-@typechecked
-class TimeWiseSet(TMValueMixin, TimeWiseCollection):
+class TimeWiseSet(TMValueMixin, BaseComponent):
     """
     A class to represent a set of TimeWise datatypes. Inherits from TimeWiseCollection and TMValueMixin to provide
     unique ComponentID and value management with validation. It also has most of the same functions as a set.
+
+    # Example usage:
+
+    from src.datatypes.collection import TimeWiseSet
+    from src.datatypes.types import Tag
+
+    tag_set = TimeWiseSet({Tag("tag1"), Tag("tag2")})
+    tag_set.add(Tag("tag3"))
+    tag_set.remove(Tag("tag1"))
     """
     PRIMITIVE_TYPE = set
 
@@ -39,7 +39,7 @@ class TimeWiseSet(TMValueMixin, TimeWiseCollection):
         :return: The combined set.
         :rtype: TimeWiseSet
         """
-        return TimeWiseSet(self._value.union(other._value))
+        return self.__class__(self._value.union(other._value))
 
     def __sub__(self, other: Union["TimeWiseSet", Set[BaseComponent]]) -> "TimeWiseSet":
         """
@@ -50,7 +50,7 @@ class TimeWiseSet(TMValueMixin, TimeWiseCollection):
         :return: The subtracted set.
         :rtype: TimeWiseSet
         """
-        return TimeWiseSet(self._value.difference(other._value))
+        return self.__class__(self._value.difference(other._value))
 
     def __or__(self, other: Union["TimeWiseSet", Set[BaseComponent]]) -> "TimeWiseSet":
         """
@@ -61,7 +61,7 @@ class TimeWiseSet(TMValueMixin, TimeWiseCollection):
         :return: The union of the two sets.
         :rtype: TimeWiseSet
         """
-        return TimeWiseSet(self._value.union(other._value))
+        return self.__class__(self._value.union(other._value))
 
     def __and__(self, other: Union["TimeWiseSet", Set[BaseComponent]]) -> "TimeWiseSet":
         """
@@ -72,7 +72,7 @@ class TimeWiseSet(TMValueMixin, TimeWiseCollection):
         :return: The intersection of the two sets.
         :rtype: TimeWiseSet
         """
-        return TimeWiseSet(self._value.intersection(other._value))
+        return self.__class__(self._value.intersection(other._value))
 
     def __xor__(self, other: Union["TimeWiseSet", Set[BaseComponent]]) -> "TimeWiseSet":
         """
@@ -83,7 +83,7 @@ class TimeWiseSet(TMValueMixin, TimeWiseCollection):
         :return: The symmetric difference of the two sets.
         :rtype: TimeWiseSet
         """
-        return TimeWiseSet(self._value.symmetric_difference(other._value))
+        return self.__class__(self._value.symmetric_difference(other._value))
 
     def __contains__(self, item: BaseComponent) -> bool:
         """
@@ -95,6 +95,48 @@ class TimeWiseSet(TMValueMixin, TimeWiseCollection):
         :rtype: bool
         """
         return item in self._value
+
+    def __len__(self):
+        """
+        Returns the length of the set.
+
+        :return: The length of the set.
+        :rtype: int
+        """
+        return len(self._value)
+
+    def __iter__(self):
+        """
+        Returns an iterator for the set.
+
+        :return: An iterator for the set.
+        :rtype: Iterator
+        """
+        return iter(self._value)
+
+    def __getitem__(self, item: int) -> BaseComponent:
+        """
+        Returns an item from the set by index.
+
+        :param item: The index of the item.
+        :type item: int
+        :return: The item at the index.
+        :rtype: BaseComponent
+        """
+        return list(self._value)[item]
+
+    def __setitem__(self, key: int, value: BaseComponent) -> None:
+        """
+        Sets an item in the set by index.
+
+        :param key: The index of the item.
+        :type key: int
+        :param value: The value to set.
+        :type value: BaseComponent
+
+        :raises NotImplementedError: Always raised to indicate that items cannot be set in a set.
+        """
+        raise NotImplementedError("Cannot set items in a set.")
 
     def add(self, item: BaseComponent) -> None:
         """
@@ -127,7 +169,7 @@ class TimeWiseSet(TMValueMixin, TimeWiseCollection):
         :return: A shallow copy of the set.
         :rtype: TimeWiseSet
         """
-        return TimeWiseSet(self._value.copy())
+        return self.__class__(self._value.copy())
 
     def difference(self, other: Union["TimeWiseSet", Set[BaseComponent]]) -> "TimeWiseSet":
         """
@@ -138,7 +180,7 @@ class TimeWiseSet(TMValueMixin, TimeWiseCollection):
         :return: The difference between the two sets.
         :rtype: TimeWiseSet
         """
-        return TimeWiseSet(self._value.difference(other._value))
+        return self.__class__(self._value.difference(other._value))
     
 
 @typechecked
@@ -158,7 +200,7 @@ class TaskSet(TimeWiseSet):
 
 
 @typechecked
-class ReminderSet(TimeWiseCollection):
+class ReminderSet(TimeWiseSet):
     """
     A class to represent a set of reminders in the TimeWise application
     """
@@ -166,7 +208,7 @@ class ReminderSet(TimeWiseCollection):
 
 
 @typechecked
-class ParticipantSet(TimeWiseCollection):
+class ParticipantSet(TimeWiseSet):
     """
     A class to represent a set of participants in the TimeWise application.
     """
@@ -174,7 +216,7 @@ class ParticipantSet(TimeWiseCollection):
 
 
 @typechecked
-class AttachmentSet(TimeWiseCollection):
+class AttachmentSet(TimeWiseSet):
     """
     A class to represent a set of attachments in the TimeWise application.
     """

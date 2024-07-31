@@ -5,9 +5,11 @@ from typing import Union, Literal
 
 from typeguard import typechecked
 
+from src.base import BaseComponent
 from src.datatypes.collection import TagSet, ReminderSet, ParticipantSet, AttachmentSet, TaskSet
 from src.datatypes.types import TaskTitle, Location, Project, Category
 from src import Status, Priority, Description, Notes
+from src.monitor import MonitorableMixin
 from src.user import User
 
 logger = logging.getLogger(__name__)
@@ -19,7 +21,7 @@ DEFAULT_PRIORITY = Priority.NORMAL
 
 @dataclass
 @typechecked
-class Task:
+class Task(MonitorableMixin, BaseComponent):
     """
     A class to represent a task in the TimeWise application.
 
@@ -112,3 +114,148 @@ class Task:
         if self.start_time is not None and self.completion_time is not None:
             if self.start_time > self.completion_time:
                 raise ValueError("Start time cannot be after completion time")
+
+    def __str__(self) -> str:
+        """
+        Returns a string representation of the task.
+
+        :return: A string representation of the task.
+        :rtype: str
+        """
+        return f"{self.title} ({self.status})"
+
+    def __repr__(self) -> str:
+        """
+        Returns a string representation of the task.
+
+        :return:
+        """
+        return f"{self.title} ({self.status})"
+
+    def __eq__(self, other: "Task") -> bool:
+        """
+        Compares two tasks for equality.
+
+        :param other:
+        :return:
+        """
+        if not isinstance(other, Task):
+            return False
+
+        return self._id == other._id
+
+    def __hash__(self) -> int:
+        """
+        Returns the hash of the task.
+
+        :return:
+        """
+        return hash(self._id)
+
+    @property
+    def is_recurring(self) -> bool:
+        """
+        Property to check if the task is recurring.
+
+        :return:
+        """
+        return self.recurring_from is not None
+
+    @property
+    def is_overdue(self) -> bool:
+        """
+        Property to check if the task is overdue.
+
+        :return:
+        """
+        return self.due_time is not None and self.due_time < datetime.datetime.now()
+
+    @property
+    def is_in_progress(self) -> bool:
+        """
+        Property to check if the task is in progress.
+
+        :return:
+        """
+        return self.start_time is not None and self.start_time < datetime.datetime.now() < self.completion_time
+
+    @property
+    def is_completed(self) -> bool:
+        """
+        Property to check if the task is completed.
+
+        :return:
+        """
+        return self.completion_time is not None
+
+    @property
+    def is_due_today(self) -> bool:
+        """
+        Property to check if the task is due today.
+
+        :return:
+        """
+        return self.due_time is not None and self.due_time.date() == datetime.datetime.now().date()
+
+    @property
+    def is_due_this_week(self) -> bool:
+        """
+        Property to check if the task is due this week.
+
+        :return:
+        """
+        return self.due_time is not None and self.due_time.date() < datetime.datetime.now().date() + datetime.timedelta(days=7)
+
+    @property
+    def is_due_this_month(self) -> bool:
+        """
+        Property to check if the task is due this month.
+
+        :return:
+        """
+        return self.due_time is not None and self.due_time.date().month == datetime.datetime.now().month
+
+    @property
+    def has_reminders(self) -> bool:
+        """
+        Property to check if the task has reminders.
+
+        :return:
+        """
+        return len(self.reminders) > 0
+
+    @property
+    def has_attachments(self) -> bool:
+        """
+        Property to check if the task has attachments.
+
+        :return:
+        """
+        return len(self.attachments) > 0
+
+    @property
+    def has_participants(self) -> bool:
+        """
+        Property to check if the task has participants.
+
+        :return:
+        """
+        return len(self.participants) > 0
+
+    @property
+    def has_notes(self) -> bool:
+        """
+        Property to check if the task has notes.
+
+        :return:
+        """
+        return len(self.notes) > 0
+
+    @property
+    def has_started(self) -> bool:
+        """
+        Property to check if the task has started.
+
+        :return:
+        """
+        return self.start_time is not None and self.start_time < datetime.datetime.now()

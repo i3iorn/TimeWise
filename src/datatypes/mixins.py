@@ -5,7 +5,6 @@ import typeguard
 from typeguard import typechecked
 
 from src.base import BaseComponent
-from src.monitor import MonitorableMixin
 
 logger = logging.getLogger(__name__)
 
@@ -85,9 +84,3 @@ class TMValueMixin:
             raise ValueError(f"Value does not meet minimum length of {cls.MIN_LENGTH}")
 
 
-@typechecked
-class TimeWiseDatatype(MonitorableMixin, TMValueMixin, BaseComponent):
-    """
-    A base class for TimeWise datatypes that includes value management with validation.
-    """
-    pass

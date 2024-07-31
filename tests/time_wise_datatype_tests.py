@@ -1,6 +1,7 @@
 import unittest
 
-from src.datatypes.base import TimeWiseDatatype, TMValueMixin
+from src.datatypes.mixins import TMValueMixin
+from src.datatypes import TimeWiseDatatype
 
 
 class TestTimeWiseDatatype(unittest.TestCase):

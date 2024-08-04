@@ -1,0 +1,5 @@
+database:
+  engine: "sqlite"
+  host: "C:/Users/micro/Code/Projects/TimeWise/src/tasks.db"
+  port: 3306
+  user: "main.py"

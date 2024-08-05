@@ -2,9 +2,10 @@ from datetime import datetime
 
 from sqlalchemy.exc import IntegrityError
 
-from src.models import Task
+from src.models import Settings
 from src.timewise import TimeWise
 import click
+from tabulate import tabulate
 
 
 timewise = TimeWise()
@@ -25,24 +26,48 @@ def tasks():
 
 
 @tasks.command()
-def list_tasks():
+def sort_methods():
     """
-    List all tasks.
+    List all the methods available as arguments to the --sort-by option in the list command.
     """
-    format = ("{:<5} {:<20} {:<20} {:<11} {:<27} {:<27} {:<27} {:<27}")
-    print(format.format("ID", "Name", "Description", "Category", " First Reminder", "Start Time", "Due Time", "Completed At"))
-    for task in timewise.get_tasks():
-        desc = task.description if len(task.description) < 20 else task.description[:17] + "..."
-        print(format.format(
-            str(task.id),
-            str(task.name),
-            str(desc),
-            str(task.category.name),
-            str(task.reminders[0].reminder_time),
-            str(task.start_time),
-            str(task.due_time),
-            str(task.completed_at)
-        ))
+    print("The available methods to sort tasks are:")
+    for method in timewise.sort_methods:
+        print(f"  {method}")
+
+
+@tasks.command()
+@click.option('-s', '--sort-by', help='The method to sort the tasks by.')
+@click.option('-c', '--columns', help='The columns to display in the task list.')
+def list(**kwargs):
+    """
+    List all tasks. Optionally, sort the tasks by a specific method.
+
+    :param sort_by: The method to sort the tasks by.
+    :type sort_by: Optional[str]
+
+    :return: None
+    """
+    sort_name = kwargs.get("sort_by", "due_date")
+    if sort_name == "date":
+        sort_name = "due_date"
+    sort_name = sort_name.replace("-", "_").replace(" ", "_")
+    if sort_name not in timewise.sort_methods:
+        print(f"Invalid sort method '{sort_name}'. Please use the 'sort_methods' command to see available options.")
+        return
+
+    tasks = timewise.get_tasks(sort_by=f'by_{sort_name}')
+
+    # Get column names to display
+    task_display_columns = timewise.session.query(Settings).filter(
+        Settings.key == "default_display_columns").one().value.split(",") if kwargs.get(
+        "columns") is None else kwargs.get("columns").split(",")
+    task_display_columns = [column.strip() for column in task_display_columns]
+
+    # Convert tasks to a list of lists for tabulate
+    task_data = [[getattr(task, column) for column in task_display_columns] for task in tasks.all()]
+
+    # Display the tasks using tabulate
+    print(tabulate(task_data, headers=task_display_columns, tablefmt="grid"))
 
 
 @tasks.command()
@@ -54,6 +79,7 @@ def list_tasks():
 @click.option('-d', '--due-time', default=None, help='The deadline for completing the task.')
 @click.option('-c', '--category_id', default=None, help='The category id to which the task belongs.')
 @click.option('-t', '--tags', default=None, help='The tags associated with the task.')
+@click.option('-p', '--priority', default=3, help='The priority of the task.')
 def add(name, desc, **kwargs):
     """
     Add a new task.
@@ -70,10 +96,14 @@ def add(name, desc, **kwargs):
     if kwargs["due_time"]:
         kwargs["due_time"] = datetime.strptime(kwargs["due_time"], "%Y-%m-%d %H:%M:%S.%f")
 
+    if "tags" in kwargs:
+        kwargs["tags"] = [t.strip() for t in kwargs["tags"].split(",")]
+
     try:
         timewise.add_task(name=task_name, description=description, **kwargs)
     except IntegrityError as e:
-        print(f"Error adding task: {e}")
+        if "UNIQUE constraint failed" in str(e):
+            print(f"Task '{task_name}' already exists with the same description.")
     else:
         print(f"Task '{task_name}' added successfully.")
 
@@ -105,7 +135,6 @@ def delete(cat, **kwargs):
     if task:
         timewise.delete_task(task)
         print(f"Task '{task.name}' deleted successfully.")
-
 
 
 @click.group()

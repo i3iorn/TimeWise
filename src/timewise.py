@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import Union, List, Optional, Type, overload
 
 from sqlalchemy import create_engine, inspect, exists
@@ -60,7 +61,8 @@ class TimeWise:
         """
         logging.basicConfig(level=log_level)
         self.conf = Config()
-        database_name = database_cursor or self.conf.get('database', {}).get('host', ':memory:')
+
+        database_name = database_cursor or os.environ.get("DB_HOST", ":memory:")
 
         self.__engine = create_engine(
             f"sqlite+pysqlite:///{database_name}",
@@ -78,20 +80,53 @@ class TimeWise:
 
         self._add_initial_records()
 
-    def _add_initial_records(self):
+    @property
+    def session(self) -> Session:
+        return self.__session
 
+    @property
+    def sort_methods(self) -> List[str]:
+        """
+        Get a list of available sort methods.
+
+        :return: A list of available sort methods.
+        :rtype: List[str]
+        """
+        return [method.replace('by_', '') for method in dir(__import__("src.sort", fromlist=["by_priority"])) if method.startswith("by_")]
+
+    def _add_initial_records(self):
+        # TODO: Move all initial records to a configuration file.
         initial_categories = [
+            {"name": "Other", "description": "Home related tasks", "is_active": True},
             {"name": "Work", "description": "Work related tasks", "is_active": True},
-            {"name": "Personal", "description": "Personal tasks", "is_active": True},
+            {"name": "Health", "description": "Health tasks", "is_active": True},
+            {"name": "Finance", "description": "Finance tasks", "is_active": True},
+            {"name": "Relationship", "description": "Relationship tasks", "is_active": True},
+            {"name": "Cleaning", "description": "Cleaning tasks", "is_active": True},
+            {"name": "Shopping list", "description": "Shopping tasks", "is_active": True},
+            {"name": "Errands", "description": "Errands tasks", "is_active": True},
+            {"name": "Travel", "description": "Travel tasks", "is_active": True},
+            {"name": "Social", "description": "Social tasks", "is_active": True},
+            {"name": "Fitness", "description": "Fitness tasks", "is_active": True}
         ]
 
         initial_tags = [
-            {"name": "Urgent", "description": "Urgent tasks", "is_active": True},
-            {"name": "Optional", "description": "Optional tasks", "is_active": True},
+            {"name": "Home", "description": "Home tasks", "is_active": True},
+            {"name": "Bike", "description": "Bike tasks", "is_active": True},
+            {"name": "Running", "description": "Running tasks", "is_active": True},
+            {"name": "Gym", "description": "Gym tasks", "is_active": True},
+            {"name": "Thea", "description": "Tasks that involve or benefit Thea", "is_active": True},
+            {"name": "Sandra", "description": "Tasks that involve or benefit Sandra", "is_active": True},
         ]
 
         settings = [
+            {"key": "default_priority", "value": "3"},
             {"key": "default_category", "value": "1"},
+            {"key": "default_sort_method", "value": "by_priority"},
+            {"key": "default_sort_order", "value": "asc"},
+            {"key": "default_display_limit", "value": "10"},
+            {"key": "default_display_offset", "value": "0"},
+            {"key": "default_display_columns", "value": "id, name, description, category, priority, due_time"},
         ]
 
         for category in initial_categories:
@@ -150,8 +185,26 @@ class TimeWise:
         self.__session.commit()
         logger.debug(f"Task '{task.name}' with description '{task.description}' added to the database.")
 
-    def get_tasks(self, category: Optional[str] = None, tag: Optional[str] = None):
+    def get_tasks(
+            self,
+            category: Optional[str] = None,
+            tag: Optional[str] = None,
+            sort_by: Optional[str] = None
+    ) -> TaskCollection:
+        """
+        Get tasks from the database. Optionally filter by category and tag. Optionally sort by a specific method. A list
+        of available sort methods can be found in src.sort.
 
+        :param category: Optionally filter by category.
+        :type category: Optional[str]
+        :param tag: Optionally filter by tag.
+        :type tag: Optional[str]
+        :param sort_by: Optionally sort by a specific method, give the method name. A list of available methods can be
+        found in src.sort.
+        :type sort_by: Optional[str]
+        :return:
+        :rtype: TaskCollection
+        """
         query = self.__session.query(Task)
 
         if category:
@@ -171,7 +224,14 @@ class TimeWise:
             msg_string += f" Task names: {', '.join([task.name for task in tasks][:5])} ..."
         logger.debug(msg_string)
 
-        return TaskCollection(tasks)
+        if sort_by:
+            sort_method_name = sort_by
+        else:
+            sort_method_name = self.__session.query(Settings).filter(Settings.key == "default_sort_method").one().value
+        # Import sort_method_type from src.sort
+        sort_method = getattr(__import__("src.sort", fromlist=[sort_method_name]), sort_method_name)
+
+        return sort_method(TaskCollection(tasks))
 
     @overload
     def detele_task(self, task_id: int) -> None:
@@ -200,12 +260,15 @@ class TimeWise:
             task_name: Optional[str] = None
     ) -> None:
         """
-        Deletes a task from the database.
+        Deletes a task from the database. Optionally provide the task object, ID, or name.
 
-        :param task:
-        :param task_id:
-        :param task_name:
-        :return:
+        :param task: The task object to delete.
+        :type: Task
+        :param task_id: The ID of the task to delete.
+        :type: int
+        :param task_name: The name of the task to delete.
+        :type: str
+        :return: None
         """
         if task_id is not None:
             task = self.__session.query(Task).filter(Task.id == task_id).one_or_none()

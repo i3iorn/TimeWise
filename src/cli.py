@@ -104,6 +104,8 @@ def add(name, desc, **kwargs):
     except IntegrityError as e:
         if "UNIQUE constraint failed" in str(e):
             print(f"Task '{task_name}' already exists with the same description.")
+        else:
+            print(f"Error adding task: {e}")
     else:
         print(f"Task '{task_name}' added successfully.")
 

@@ -1,0 +1,122 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/i3iorn/TimeWise/blob/main/sort.schema_v1.json",
+  "title": "SortingMethod",
+  "description": "A sorting method for tasks.",
+  "type": "object",
+  "properties": {
+    "name": {
+      "description": "The name of the sorting method.",
+      "type": "string"
+    },
+    "attributes": {
+      "description": "The attributes of the sorting method.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/sorting_attribute"
+      },
+      "uniqueItems": true,
+      "uniqueItemProperties": ["name"]
+    }
+  },
+  "required": [
+    "name",
+    "attributes"
+  ],
+
+  "$defs": {
+    "value_type": {
+      "oneOf": [
+        {
+          "type": "string",
+          "if": {
+            "properties": {
+              "input_type": {
+                "const": "string"
+              }
+            }
+          }
+        },
+        {
+          "type": "integer",
+          "if": {
+            "properties": {
+              "input_type": {
+                "const": "integer"
+              }
+            }
+          }
+        },
+        {
+          "type": "number",
+          "if": {
+            "properties": {
+              "input_type": {
+                "const": "float"
+              }
+            }
+          }
+        }
+      ]
+    },
+
+    "sorting_attribute": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "description": "The name of the attribute to evaluate.",
+          "type": "string"
+        },
+        "input_type": {
+          "description": "The type of input to expect.",
+          "type": "string",
+          "enum": [
+            "string",
+            "int",
+            "float",
+            "date-time"
+          ]
+        },
+        "target": {
+          "description": "The value to compare the attribute to.",
+          "$ref": "#/$defs/value_type"
+        },
+        "reverse": {
+          "description": "Whether to reverse the sorting order.",
+          "type": "boolean"
+        },
+        "required": {
+          "description": "Whether the attribute is required.",
+          "type": "boolean",
+          "default": true
+        },
+        "default": {
+          "description": "The default value to use if the attribute is not present.",
+          "$ref": "#/$defs/value_type"
+        },
+        "weight": {
+          "description": "The weight of the attribute in the sorting method.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "required": [
+        "name",
+        "input_type",
+        "target",
+        "weight"
+      ],
+      "if": {
+        "properties": {
+          "required": {
+            "const": false
+          }
+        }
+      },
+      "then": {
+        "required": ["default"]
+      }
+    }
+  }
+}

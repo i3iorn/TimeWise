@@ -2,8 +2,8 @@ import logging
 import os
 from typing import Union, List, Optional, Type, overload
 
-from sqlalchemy import create_engine, inspect, exists
-from sqlalchemy.orm import Session
+from sqlalchemy import create_engine, inspect, exists, Column, text
+from sqlalchemy.orm import Session, Query
 from typeguard import typechecked
 
 from src.config import Config
@@ -63,6 +63,7 @@ class TimeWise:
         self.conf = Config()
 
         database_name = database_cursor or os.environ.get("DB_HOST", ":memory:")
+        print(database_name)
 
         self.__engine = create_engine(
             f"sqlite+pysqlite:///{database_name}",
@@ -72,11 +73,23 @@ class TimeWise:
 
         self.__metadata = Base.metadata
 
-        inspector = inspect(self.__engine)
-        tables = inspector.get_table_names()
-        for table in self.__metadata.tables.keys():
-            if table not in tables:
-                self.__metadata.tables[table].create(self.__engine)
+        try:
+            inspector = inspect(self.__engine)
+            tables = inspector.get_table_names()
+            for table in self.__metadata.tables.keys():
+                if table not in tables:
+                    self.__metadata.tables[table].create(self.__engine)
+                else:
+                    # Check if all columns are present, otherwise add them
+                    columns = inspector.get_columns(table)
+                    for column in self.__metadata.tables[table].columns:
+                        if column.name not in [c["name"] for c in columns]:
+                            with self.__engine.connect() as connection:
+                                new_column = Column(column.name, column.type)
+                                connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {new_column.compile(self.__engine)}"))
+        except Exception as e:
+            logger.error(f"Error creating and verifying tables: {e}")
+            raise e
 
         self._add_initial_records()
 
@@ -96,38 +109,10 @@ class TimeWise:
 
     def _add_initial_records(self):
         # TODO: Move all initial records to a configuration file.
-        initial_categories = [
-            {"name": "Other", "description": "Home related tasks", "is_active": True},
-            {"name": "Work", "description": "Work related tasks", "is_active": True},
-            {"name": "Health", "description": "Health tasks", "is_active": True},
-            {"name": "Finance", "description": "Finance tasks", "is_active": True},
-            {"name": "Relationship", "description": "Relationship tasks", "is_active": True},
-            {"name": "Cleaning", "description": "Cleaning tasks", "is_active": True},
-            {"name": "Shopping list", "description": "Shopping tasks", "is_active": True},
-            {"name": "Errands", "description": "Errands tasks", "is_active": True},
-            {"name": "Travel", "description": "Travel tasks", "is_active": True},
-            {"name": "Social", "description": "Social tasks", "is_active": True},
-            {"name": "Fitness", "description": "Fitness tasks", "is_active": True}
-        ]
-
-        initial_tags = [
-            {"name": "Home", "description": "Home tasks", "is_active": True},
-            {"name": "Bike", "description": "Bike tasks", "is_active": True},
-            {"name": "Running", "description": "Running tasks", "is_active": True},
-            {"name": "Gym", "description": "Gym tasks", "is_active": True},
-            {"name": "Thea", "description": "Tasks that involve or benefit Thea", "is_active": True},
-            {"name": "Sandra", "description": "Tasks that involve or benefit Sandra", "is_active": True},
-        ]
-
-        settings = [
-            {"key": "default_priority", "value": "3"},
-            {"key": "default_category", "value": "1"},
-            {"key": "default_sort_method", "value": "by_priority"},
-            {"key": "default_sort_order", "value": "asc"},
-            {"key": "default_display_limit", "value": "10"},
-            {"key": "default_display_offset", "value": "0"},
-            {"key": "default_display_columns", "value": "id, name, description, category, priority, due_time"},
-        ]
+        initial_data = self.conf.get("initial_values")
+        initial_categories = initial_data.get("categories")
+        initial_tags = initial_data.get("tags")
+        settings = initial_data.get("settings")
 
         for category in initial_categories:
             exists_query = self.__session.query(exists().where(Category.name == category['name'])).scalar()
@@ -151,12 +136,23 @@ class TimeWise:
         logger.debug("Initial records added to the database.")
 
     def add_task(self, **kwargs) -> None:
+        """
+        Add a task to the database. Optionally provide a category, tags, and other task attributes.
+
+        Args:
+            **kwargs: Task attributes. Optionally provide a category, tags, and other task attributes
+
+        Returns:
+            None
+
+        Raises:
+            ValueError: If the category provided is not found in the database.
+        """
         default_category = self.__session.query(Settings).filter(Settings.key == "default_category").one()
         category = kwargs.pop("category", None) or kwargs.pop("category_id", None) or default_category.value
-        if isinstance(category, str) and category.isdigit():
+
+        if isinstance(category, str) and category.isdigit() or isinstance(category, int):
             category = int(category)
-        elif isinstance(category, str) and not category.isdigit() or not isinstance(category, int):
-            raise ValueError("Category ID must be an integer or a string representing an integer.")
 
         tags = kwargs.pop("tags", [])
 
@@ -184,6 +180,10 @@ class TimeWise:
 
         self.__session.commit()
         logger.debug(f"Task '{task.name}' with description '{task.description}' added to the database.")
+
+    def drop_database(self):
+        self.__metadata.drop_all(self.__engine)
+        logger.debug("Database dropped.")
 
     def get_tasks(
             self,
@@ -233,26 +233,6 @@ class TimeWise:
 
         return sort_method(TaskCollection(tasks))
 
-    @overload
-    def detele_task(self, task_id: int) -> None:
-        """
-        Deletes a task from the database by its ID.
-
-        :param task_id:
-        :return:
-        """
-        ...
-
-    @overload
-    def delete_task(self, task_name: str) -> None:
-        """
-        Deletes a task from the database by its name.
-
-        :param task_name:
-        :return:
-        """
-        ...
-
     def delete_task(
             self,
             task: Optional[Task] = None,
@@ -288,7 +268,13 @@ class TimeWise:
         self.__session.commit()
         logger.debug(f"Category '{name}' added to the database.")
 
-    def get_categories(self):
+    def get_categories(self) -> List[Type[Category]]:
+        """
+        Retrieves all categories from the database.
+
+        Returns:
+            List[Category]: A list of all categories.
+        """
         return self.__session.query(Category).all()
 
     def __enter__(self):

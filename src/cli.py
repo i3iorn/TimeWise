@@ -429,7 +429,6 @@ def delete_recurrence(recurring_id):
     timewise.session.commit()
     print(f"Recurring task with id '{recurring_id}' deleted successfully.")
 
-
 @tasks.command()
 @click.argument('cat', required=False)
 @click.option('-n', '--task-name', help='The name of the task you want to delete.')

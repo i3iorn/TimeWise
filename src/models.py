@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta
 from typing import List
 from uuid import uuid4
@@ -6,6 +7,9 @@ from sqlalchemy import Column, DateTime, String, Boolean, Table, ForeignKey, and
 from sqlalchemy.exc import InvalidRequestError
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, Session, UOWTransaction
 from typeguard import typechecked
+
+
+logger = logging.getLogger(__name__)
 
 
 @typechecked
@@ -42,6 +46,7 @@ class Category(Base):
     name: Mapped[str] = mapped_column(String(100), unique=True)
     description: Mapped[str] = mapped_column(String(4000), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    color: Mapped[str] = mapped_column(String(16), nullable=True)
 
     tasks: Mapped[List["Task"]] = relationship("Task", back_populates="category")
 
@@ -79,20 +84,35 @@ class Reminder(Base):
     is_sent: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
-class RecurringTask(Base):
-    __tablename__ = 'recurring_tasks'
+class Recurrence(Base):
+    __tablename__ = 'recurrences'
     id: Mapped[int] = mapped_column(primary_key=True)
     uuid: Mapped[str] = mapped_column(String(36), unique=True, default=lambda: uuid4().hex)
     task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"))
-    task: Mapped["Task"] = relationship("Task", back_populates="recurring_tasks")
-    recur_interval: Mapped[int] = mapped_column(Integer)
-    recur_end: Mapped[datetime] = mapped_column(DateTime, nullable=True)
-    recur_start: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    task: Mapped["Task"] = relationship("Task", back_populates="recurrence")
+    interval: Mapped[int] = mapped_column(Integer)
+    end: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    start: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     __table_args__ = (
-        UniqueConstraint('task_id', 'recur_interval', 'recur_start', name='uix_task_interval_start'),
+        UniqueConstraint('task_id', 'interval', 'start', name='uix_task_interval_start'),
     )
+
+    def __next__(self):
+        self.start += timedelta(seconds=self.interval)
+        return self.start
+
+
+class Unit(Base):
+    __tablename__ = 'units'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    description: Mapped[str] = mapped_column(String(4000), nullable=True)
+    tasks: Mapped[List["Task"]] = relationship("Task", back_populates="unit")
+
+    def __str__(self):
+        return self.name
 
 
 class Task(TimeStampedMixin, Base):
@@ -112,7 +132,9 @@ class Task(TimeStampedMixin, Base):
         reminders (List[Reminder]): The reminders associated with the task.
         parent_task_id (int): The foreign key referencing the parent task.
         parent_task (Task): The parent task of the task.
-        sub_tasks (List[Task]): The sub tasks of the task.
+        sub_tasks (List[Task]): The sub-tasks of the task.
+        priority (int): The priority of the task.
+        count (int): The count of the task.
 
     Methods:
         mark_as_completed: Marks the task as completed.
@@ -131,6 +153,7 @@ class Task(TimeStampedMixin, Base):
     due_time: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     completed_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     priority: Mapped[int] = mapped_column(String(3), default=3)
+    count: Mapped[int] = mapped_column(Integer, default=None, nullable=True)
 
     reminders: Mapped[List["Reminder"]] = relationship(
         "Reminder",
@@ -168,17 +191,30 @@ class Task(TimeStampedMixin, Base):
         back_populates="tasks",
     )
 
-    recurring_tasks: Mapped[List["RecurringTask"]] = relationship(
-        "RecurringTask",
-        primaryjoin=id == RecurringTask.task_id,
+    recurrence: Mapped[List["Recurrence"]] = relationship(
+        "Recurrence",
+        primaryjoin=id == Recurrence.task_id,
         back_populates="task",
         cascade="all, delete-orphan",
+    )
+
+    unit_id: Mapped[int] = mapped_column(ForeignKey("units.id"), nullable=True)
+    unit: Mapped["Unit"] = relationship(
+        "Unit",
+        primaryjoin=unit_id == Unit.id,
+        back_populates="tasks"
     )
 
     __table_args__ = (
         UniqueConstraint('name', 'description', name='uix_name_description'),
     )
 
+    def __str__(self):
+        if self.unit:
+            return f"{self.name} ({self.unit})"
+        return self.name
+
+    # Methods for completeness
     def mark_as_completed(self):
         """
         Marks the task as completed by setting the completed_at attribute to the current datetime.
@@ -191,6 +227,7 @@ class Task(TimeStampedMixin, Base):
         """
         self.completed_at = None
 
+    # Methods for managing categories
     def set_category(self, category: Category):
         """
         Sets the category of the task.
@@ -200,6 +237,7 @@ class Task(TimeStampedMixin, Base):
         """
         self.category = category
 
+    # Methods for managing tags
     def add_tag(self, tag: Tag):
         """
         Adds a tag to the task.
@@ -218,6 +256,7 @@ class Task(TimeStampedMixin, Base):
         """
         self.tags.remove(tag)
 
+    # Methods for managing times
     def update_start_time(self, start_time: datetime):
         """
         Updates the start time of the task.
@@ -227,23 +266,42 @@ class Task(TimeStampedMixin, Base):
         """
         self.start_time = start_time
 
-    def add_recurring_task(
-            self,
-            interval: int,
-            start_time: datetime = datetime.now(),
-            end_time: datetime = None
-    ):
+    def update_due_time(self, due_time: datetime):
         """
-        Adds a recurring task to the task.
+        Updates the due time of the task.
 
         Args:
-            interval (int): The interval of the recurring task.
-            start_time (datetime): The start time of the recurring task.
-            end_time (datetime): The end time of the recurring task.
+            due_time (datetime): The new due time for the task.
         """
-        recurring_task = RecurringTask(recur_interval=interval, recur_start_time=start_time, recur_end_time=end_time)
-        self.recurring_tasks.append(recurring_task)
-        return recurring_task
+        self.due_time = due_time
+
+    # Methods for managing recurrences
+    def add_recurrence(self, interval: int, start: datetime = None, end: datetime = None):
+        """
+        Adds a recurrence to the task.
+
+        Args:
+            interval (int): The interval for the recurrence.
+            start (datetime): The start time for the recurrence.
+            end (datetime): The end time for the recurrence.
+        """
+        if not start:
+            start = datetime.now()
+
+        if isinstance(start, datetime) and isinstance(end, datetime) and start >= end:
+            raise ValueError("Start time cannot be greater than or equal to end time.")
+
+        recurrence = Recurrence(interval=interval, start=start, end=end)
+        self.recurrence.append(recurrence)
+
+    def remove_recurrence(self, recurrence: Recurrence):
+        """
+        Removes a recurrence from the task.
+
+        Args:
+            recurrence (Recurrence): The recurrence to remove from the task.
+        """
+        self.recurrence.remove(recurrence)
 
 
 @event.listens_for(Task, "before_insert")
@@ -267,7 +325,12 @@ def default_reminder_after_flush(session, flush_context: UOWTransaction):
     """
     for target in session.new:
         if isinstance(target, Task) and hasattr(target, '_default_reminder_info'):
-            default_reminder = Reminder(**target._default_reminder_info)
-            session.add(default_reminder)
-            target.reminders.append(default_reminder)
-            del target._default_reminder_info
+            try:
+                default_reminder = Reminder(**target._default_reminder_info)
+                session.add(default_reminder)
+                target.reminders.append(default_reminder)
+                del target._default_reminder_info
+            except InvalidRequestError as e:
+                logger.error("Error adding default reminder to task.")
+                session.rollback()
+                raise e

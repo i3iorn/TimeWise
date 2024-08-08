@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 @typechecked
 class TaskCollection:
-    def __init__(self, tasks: List[Task]):
+    def __init__(self, tasks: List):
         self.__tasks = tasks
 
     def filter(self, **kwargs) -> "TaskCollection":
@@ -224,14 +224,7 @@ class TimeWise:
             msg_string += f" Task names: {', '.join([task.name for task in tasks][:5])} ..."
         logger.debug(msg_string)
 
-        if sort_by:
-            sort_method_name = sort_by
-        else:
-            sort_method_name = self.__session.query(Settings).filter(Settings.key == "default_sort_method").one().value
-        # Import sort_method_type from src.sort
-        sort_method = getattr(__import__("src.sort", fromlist=[sort_method_name]), sort_method_name)
-
-        return sort_method(TaskCollection(tasks))
+        return TaskCollection(sorted(tasks, key=lambda x: x.start_time))
 
     def delete_task(
             self,

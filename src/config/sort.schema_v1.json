@@ -56,6 +56,24 @@
               }
             }
           }
+        },
+        {
+          "type": "string",
+          "format": "date-time",
+          "if": {
+            "properties": {
+              "input_type": {
+                "const": "date-time"
+              }
+            }
+          },
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$",
+          "examples": ["2021-01-01T00:00:00Z"],
+          "errorMessage": {
+              "pattern": "The value must be a valid date-time string."
+          },
+          "minimum": "2000-01-01T00:00:00Z",
+          "maximum": "2100-12-31T23:59:59Z"
         }
       ]
     },
@@ -81,6 +99,15 @@
           "description": "The value to compare the attribute to.",
           "$ref": "#/$defs/value_type"
         },
+        "default": {
+          "description": "The default value to use if the attribute is not present.",
+          "$ref": "#/$defs/value_type"
+        },
+        "nullable": {
+          "description": "Whether the attribute can have a null value.",
+          "type": "boolean",
+          "default": false
+        },
         "reverse": {
           "description": "Whether to reverse the sorting order.",
           "type": "boolean"
@@ -90,9 +117,10 @@
           "type": "boolean",
           "default": true
         },
-        "default": {
-          "description": "The default value to use if the attribute is not present.",
-          "$ref": "#/$defs/value_type"
+        "stable": {
+          "description": "Whether the attribute is stable.",
+          "type": "boolean",
+          "default": false
         },
         "weight": {
           "description": "The weight of the attribute in the sorting method.",

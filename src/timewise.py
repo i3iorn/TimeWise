@@ -12,12 +12,16 @@ from src.models.category import Category
 from src.models.common import Base
 from src.models.task import Task, Tag
 from src.models.sides import Settings
+from src.sort.common import TaskSorter
 
 logger = logging.getLogger(__name__)
 
 
 @typechecked
 class TaskCollection:
+    """
+    TaskCollection class to manage a collection of tasks. It stores a list of tasks and provides methods to filter,
+    """
     def __init__(self, tasks: List):
         self.__tasks = tasks
 
@@ -40,6 +44,9 @@ class TaskCollection:
 
     def __next__(self):
         return next(self.__tasks)
+
+    def __len__(self):
+        return len(self.__tasks)
 
 
 @typechecked
@@ -194,7 +201,8 @@ class TimeWise:
     def get_tasks(
             self,
             category: Optional[str] = None,
-            tag: Optional[str] = None
+            tag: Optional[str] = None,
+            sort_by: Optional[str] = None
     ) -> TaskCollection:
         """
         Get tasks from the database. Optionally filter by category and tag. Optionally sort by a specific method. A list
@@ -221,6 +229,12 @@ class TimeWise:
         query = query.order_by(Task.start_time)
         tasks = query.all()
 
+        if sort_by:
+            sort_by = sort_by.replace("-", "_")
+            tasks = TaskSorter(sort_by).sort(tasks)
+        else:
+            tasks = TaskSorter("priority").sort(tasks)
+
         msg_string = f"Found {len(tasks)} task"
         if len(tasks) != 1:
             msg_string += "s"
@@ -229,7 +243,7 @@ class TimeWise:
             msg_string += f" Task names: {', '.join([task.name for task in tasks][:5])} ..."
         logger.debug(msg_string)
 
-        return TaskCollection(sorted(tasks, key=lambda x: x.start_time))
+        return tasks
 
     def delete_task(
             self,

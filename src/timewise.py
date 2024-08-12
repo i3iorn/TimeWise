@@ -6,8 +6,12 @@ from sqlalchemy import create_engine, inspect, exists, Column, text
 from sqlalchemy.orm import Session, Query
 from typeguard import typechecked
 
+from src import exceptions
 from src.config import Config
-from src.models import Base, Category, Tag, Task, Settings
+from src.models.category import Category
+from src.models.common import Base
+from src.models.task import Task, Tag
+from src.models.sides import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +139,7 @@ class TimeWise:
         self.__session.commit()
         logger.debug("Initial records added to the database.")
 
-    def add_task(self, **kwargs) -> None:
+    def add_task(self, **kwargs) -> int:
         """
         Add a task to the database. Optionally provide a category, tags, and other task attributes.
 
@@ -143,33 +147,34 @@ class TimeWise:
             **kwargs: Task attributes. Optionally provide a category, tags, and other task attributes
 
         Returns:
-            None
+            integer ID of the added task
 
         Raises:
             ValueError: If the category provided is not found in the database.
         """
-        default_category = self.__session.query(Settings).filter(Settings.key == "default_category").one()
-        category = kwargs.pop("category", None) or kwargs.pop("category_id", None) or default_category.value
+        logger.debug(f"Adding task to the database with attributes: {kwargs}")
 
-        if isinstance(category, str) and category.isdigit() or isinstance(category, int):
-            category = int(category)
+        cat = self.__session.query(Settings).filter(Settings.key == "default_category").one().value
+        categories = self.__session.query(Category)
+        if "category_id" in kwargs and kwargs["category_id"] is not None:
+            logger.debug(f"Category ID provided: {kwargs['category_id']}")
+            cat = kwargs.pop("category_id")
+            category = categories.filter(Category.id == cat).one_or_none()
+        elif "category" in kwargs and kwargs["category"] is not None:
+            logger.debug(f"Category name provided: {kwargs['category']}")
+            cat = kwargs.pop("category")
+            category = categories.filter(Category.name == cat).one_or_none()
+        else:
+            logger.debug(f"Default category used: {cat}")
+            category = categories.filter(Category.name == cat).one_or_none()
+
+        if category is None:
+            raise exceptions.CategoryNotFoundException(category=cat)
 
         tags = kwargs.pop("tags", [])
 
         arguments = {k: v for k, v in kwargs.items() if k != "category" and v is not None}
-
-        category_obj = None
-        if isinstance(category, int):
-            category_exists = self.__session.query(exists().where(Category.id == category)).scalar()
-            if category_exists:
-                category_obj = self.__session.query(Category).filter(Category.id == category).one()
-        elif category:
-            category_exists = self.__session.query(exists().where(Category.name == category)).scalar()
-            if category_exists:
-                category_obj = self.__session.query(Category).filter(Category.name == category).one()
-
-        if category_obj:
-            arguments["category"] = category_obj
+        arguments["category"] = category
 
         task = Task(**arguments)
         self.__session.add(task)
@@ -180,6 +185,7 @@ class TimeWise:
 
         self.__session.commit()
         logger.debug(f"Task '{task.name}' with description '{task.description}' added to the database.")
+        return task.id
 
     def drop_database(self):
         self.__metadata.drop_all(self.__engine)
@@ -188,8 +194,7 @@ class TimeWise:
     def get_tasks(
             self,
             category: Optional[str] = None,
-            tag: Optional[str] = None,
-            sort_by: Optional[str] = None
+            tag: Optional[str] = None
     ) -> TaskCollection:
         """
         Get tasks from the database. Optionally filter by category and tag. Optionally sort by a specific method. A list

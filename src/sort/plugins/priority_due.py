@@ -13,12 +13,23 @@ class SortPlugin(IPlugin):
         return math.tanh(x)
 
     def score(self, task):
-        dt = (task.due_time or datetime.now() + timedelta(days=31))
-        diff = dt - datetime.now()
+        scores = []
+        if task.due_time is not None:
+            diff = task.due_time - datetime.now()
+            due_score = self.__map_to_range(diff.days)
+            scores.append(due_score)
+        else:
+            scores.append(self.__map_to_range(5))
 
-        due_score = self.__map_to_range(diff.days) - (math.pow(diff.seconds, 0.05 / int(task.priority)) if dt < datetime.now() else 0)
+        if task.start_time is not None:
+            start_diff = task.start_time - datetime.now()
+            start_score = self.__map_to_range(start_diff.days)
+            scores.append(start_score)
 
-        priority_score = self.__map_to_range((int(task.priority) or 5) - 1)
+        if task.category == "Health":
+            scores.append(self.__map_to_range(-1))
 
-        print(task.id, priority_score, due_score)
-        return priority_score + due_score
+        scores.append(self.__map_to_range((int(task.priority) or 5) - 1))
+
+        print(task.id, sum(scores) / len(scores))
+        return sum(scores)

@@ -1,57 +1,17 @@
-import logging
 from datetime import datetime, timedelta
 from typing import List
 from uuid import uuid4
 
-from sqlalchemy import Column, DateTime, String, Boolean, Table, ForeignKey, and_, event, UniqueConstraint, Integer
+from sqlalchemy import String, DateTime, Integer, ForeignKey, and_, UniqueConstraint, Table, Column, event, Boolean
 from sqlalchemy.exc import InvalidRequestError
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, Session, UOWTransaction
-from typeguard import typechecked
+from sqlalchemy.orm import Mapped, mapped_column, relationship, Session, UOWTransaction
 
-
-logger = logging.getLogger(__name__)
-
-
-@typechecked
-class TimeStampedMixin:
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
-    deleted_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
-
-
-@typechecked
-class Base(DeclarativeBase):
-    __abstract__ = True
-    __table_args__ = {'keep_existing': True}
-
-
-class CustomValues(TimeStampedMixin, Base):
-    __tablename__ = 'custom_values'
-    id: Mapped[int] = mapped_column(primary_key=True)
-    key: Mapped[str] = mapped_column(String(100), unique=True)
-    value: Mapped[str] = mapped_column(String(4000), nullable=True)
-
-
-class Settings(Base):
-    __tablename__ = 'settings'
-    id: Mapped[int] = mapped_column(primary_key=True)
-    key: Mapped[str] = mapped_column(String(100), unique=True)
-    value: Mapped[str] = mapped_column(String(4000), nullable=True)
-
-
-class Category(Base):
-    __tablename__ = 'categories'
-    id: Mapped[int] = mapped_column(primary_key=True)
-    uuid: Mapped[str] = mapped_column(String(36), unique=True, default=lambda: uuid4().hex)
-    name: Mapped[str] = mapped_column(String(100), unique=True)
-    description: Mapped[str] = mapped_column(String(4000), nullable=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    color: Mapped[str] = mapped_column(String(16), nullable=True)
-
-    tasks: Mapped[List["Task"]] = relationship("Task", back_populates="category")
-
-    def __str__(self):
-        return self.name
+from src import cli
+from src.models.category import Category
+from src.models.common import TimeStampedMixin, Base
+from src.models.recurrence import Recurrence
+from src.models.reminder import Reminder, logger
+from src.models.sides import Unit
 
 
 task_tags = Table(
@@ -73,48 +33,6 @@ class Tag(Base):
     tasks: Mapped[List["Task"]] = relationship("Task", secondary=task_tags, back_populates="tags")
 
 
-class Reminder(Base):
-    __tablename__ = 'reminders'
-    id: Mapped[int] = mapped_column(primary_key=True)
-    uuid: Mapped[str] = mapped_column(String(36), unique=True, default=lambda: uuid4().hex)
-    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"))
-    task: Mapped["Task"] = relationship("Task", back_populates="reminders")
-    reminder_time: Mapped[datetime] = mapped_column(DateTime)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    is_sent: Mapped[bool] = mapped_column(Boolean, default=False)
-
-
-class Recurrence(Base):
-    __tablename__ = 'recurrences'
-    id: Mapped[int] = mapped_column(primary_key=True)
-    uuid: Mapped[str] = mapped_column(String(36), unique=True, default=lambda: uuid4().hex)
-    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"))
-    task: Mapped["Task"] = relationship("Task", back_populates="recurrence")
-    interval: Mapped[int] = mapped_column(Integer)
-    end: Mapped[datetime] = mapped_column(DateTime, nullable=True)
-    start: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-
-    __table_args__ = (
-        UniqueConstraint('task_id', 'interval', 'start', name='uix_task_interval_start'),
-    )
-
-    def __next__(self):
-        self.start += timedelta(seconds=self.interval)
-        return self.start
-
-
-class Unit(Base):
-    __tablename__ = 'units'
-    id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(100), unique=True)
-    description: Mapped[str] = mapped_column(String(4000), nullable=True)
-    tasks: Mapped[List["Task"]] = relationship("Task", back_populates="unit")
-
-    def __str__(self):
-        return self.name
-
-
 class Task(TimeStampedMixin, Base):
     """
     Represents a task in the database.
@@ -127,9 +45,9 @@ class Task(TimeStampedMixin, Base):
         due_time (datetime): The due time of the task.
         completed_at (datetime): The time when the task was completed.
         category_id (int): The foreign key referencing the category of the task.
-        category (Category): The category to which the task belongs.
-        tags (List[Tag]): The tags associated with the task.
-        reminders (List[Reminder]): The reminders associated with the task.
+        category (src.models.category.Category): The category to which the task belongs.
+        tags (List[src.models.task.Tag]): The tags associated with the task.
+        reminders (List[src.models.reminder.Reminder]): The reminders associated with the task.
         parent_task_id (int): The foreign key referencing the parent task.
         parent_task (Task): The parent task of the task.
         sub_tasks (List[Task]): The sub-tasks of the task.
@@ -206,7 +124,7 @@ class Task(TimeStampedMixin, Base):
     )
 
     __table_args__ = (
-        UniqueConstraint('name', 'description', name='uix_name_description'),
+        UniqueConstraint('name', 'description', 'due_time', name='uix_name_description_due_time'),
     )
 
     def __str__(self):
@@ -327,7 +245,7 @@ def default_reminder_after_flush(session, flush_context: UOWTransaction):
         if isinstance(target, Task) and hasattr(target, '_default_reminder_info'):
             try:
                 default_reminder = Reminder(**target._default_reminder_info)
-                session.add(default_reminder)
+                # cli.add_reminder(default_reminder)
                 target.reminders.append(default_reminder)
                 del target._default_reminder_info
             except InvalidRequestError as e:

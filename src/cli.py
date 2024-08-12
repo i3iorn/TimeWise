@@ -1,19 +1,23 @@
 import logging
-from datetime import datetime
+import click
+
+from datetime import datetime, timedelta
+from tabulate import tabulate
 from typing import Dict, Any, Type
 
-from sqlalchemy import select
-
-from src.models import Settings, Category, Reminder, Recurrence
+from src import exceptions
+from src.models.category import Category
+from src.models.recurrence import Recurrence
+from src.models.reminder import Reminder
+from src.models.sides import Settings
 from src.timewise import TimeWise
-import click
-from tabulate import tabulate
 
-timewise = TimeWise(echo_database_calls=True)
+
+# Set up logging
+timewise = TimeWise(echo_database_calls=False)
 logger = logging.getLogger(__name__)
 
 
-# Helper Functions
 def get_task_by_id(task_id: int):
     """
     Get a task by its id.
@@ -146,6 +150,7 @@ def seconds_to_interval(seconds: int) -> str:
     return interval
 
 
+
 @click.group()
 def cli():
     """A simple CLI application."""
@@ -159,6 +164,51 @@ def drop_database() -> None:
     """
     timewise.drop_database()
     print("Database dropped successfully.")
+
+
+@click.group()
+def categories():
+    """
+    Open the categories interface. This interface allows you to manage categories through a series of subcommands.
+    """
+    pass
+
+
+@categories.command()
+@click.argument('name')
+@click.option('-d', '--description', default="", help='A detailed description of the category.')
+def add_category(name, description):
+    """
+    Add a new category.
+
+    Example:
+    $ timewise categories add-category 'Category Name' 'Category Description'
+
+    :param name: The name of the category.
+    :type name: str
+    :param description: A detailed description of the category.
+    :type description: str
+    :return: None
+    """
+    timewise.add_category(name=name, description=description)
+    print(f"Category '{name}' added successfully.")
+
+
+@categories.command()
+def list_categories():
+    """
+    List all categories.
+    """
+    task_display_format = "{:<5} {:<20} {:<20} {:<11}"
+    print(task_display_format.format("ID", "Name", "Description", "Is Active"))
+    for category in timewise.get_categories():
+        print(task_display_format.format(
+            str(category.id),
+            str(category.name),
+            str(category.description),
+            str(category.is_active)
+        ))
+
 
 
 @click.group()
@@ -193,10 +243,9 @@ def list(**kwargs: Dict[str, Any]) -> None:
     :type kwargs: Dict[str, Any]
     :return: None
     """
-    sort_name = get_sort_method(kwargs.get("sort_by"))
     task_display_columns = get_display_columns(kwargs.get("columns"))
 
-    tasks = timewise.get_tasks(sort_by=f'by_{sort_name}')
+    tasks = timewise.get_tasks()
     task_data = [[getattr(task, column) for column in task_display_columns] for task in tasks.all()]
 
     print(tabulate(task_data, headers=task_display_columns, tablefmt="grid"))
@@ -219,6 +268,7 @@ def get_display_columns(columns: str) -> list:
 
 
 @tasks.command()
+@click.pass_context
 @click.argument('name', required=False)
 @click.argument('desc', required=False)
 @click.option('-n', '--task-name', help='The name of the task.')
@@ -226,11 +276,13 @@ def get_display_columns(columns: str) -> list:
 @click.option('-s', '--start-time', default=datetime.now(), help='What time you can begin completing the task at the earliest')
 @click.option('-d', '--due-time', default=None, help='The deadline for completing the task.')
 @click.option('-c', '--category_id', default=None, help='The category id to which the task belongs.')
+@click.option('-C', '--category', default=None, help='The category name to which the task belongs.')
 @click.option('-t', '--tags', default=None, help='The tags associated with the task.')
 @click.option('-p', '--priority', default=3, help='The priority of the task.')
+@click.option('-r', '--recurring-interval', help='Recurring interval, use 1y1M1d1h1m1s format')
 @click.option('--literal-title', is_flag=True, help='Whether to use the literal title or standard formatting.')
 @click.option('--completed', is_flag=True, help='Whether the task is completed.')
-def add(name: str, desc: str, **kwargs: Dict[str, Any]) -> None:
+def add(ctx, name: str, desc: str, **kwargs: Dict[str, Any]) -> None:
     """
     Add a new task. The name and description arguments are optional.
 
@@ -246,11 +298,24 @@ def add(name: str, desc: str, **kwargs: Dict[str, Any]) -> None:
     :return: None
     """
     task_name = get_task_name(name, kwargs)
-    description = desc or kwargs.get("description")
+    interval = kwargs.pop("recurring_interval", None)
+    description = desc or kwargs.pop("description")
     kwargs = process_options(kwargs)
 
-    timewise.add_task(name=task_name, description=description, **kwargs)
-    print(f"Task '{task_name}' added successfully.")
+    try:
+        task_id = timewise.add_task(name=task_name, description=description, **kwargs)
+    except exceptions.CategoryNotFoundException as e:
+        new_category = click.prompt(f"Category '{e.category_name}' not found. Would you like to create it? [y/n]")
+        if new_category.lower() in ["yes", "y"]:
+            new_cat_desc = click.prompt("Please provide a description for the new category.")
+            add_category(e.category_name)
+            task_id = timewise.add_task(name=e.category_name, description=new_cat_desc, **kwargs)
+        else:
+            return
+
+    if interval is not None:
+        add_recurrence([str(task_id), interval])
+        print(f"Task '{task_name}' added successfully.")
 
 
 def get_task_name(name: str, kwargs: Dict[str, Any]) -> str:
@@ -261,9 +326,18 @@ def get_task_name(name: str, kwargs: Dict[str, Any]) -> str:
 
 
 def process_options(kwargs: Dict[str, Any]) -> Dict[str, Any]:
-    kwargs["start_time"] = datetime.strptime(kwargs["start_time"], "%Y-%m-%d %H:%M:%S.%f")
+    if kwargs["start_time"]:
+        try:
+            start_seconds = interval_to_seconds(kwargs["start_time"])
+            kwargs["start_time"] = datetime.now() + timedelta(seconds=start_seconds)
+        except ValueError:
+            kwargs["start_time"] = datetime.strptime(kwargs["start_time"], "%Y-%m-%d %H:%M:%S.%f")
     if kwargs["due_time"]:
-        kwargs["due_time"] = datetime.strptime(kwargs["due_time"], "%Y-%m-%d %H:%M:%S.%f")
+        try:
+            due_seconds = interval_to_seconds(kwargs["due_time"])
+            kwargs["due_time"] = datetime.now() + timedelta(seconds=due_seconds)
+        except ValueError:
+            kwargs["due_time"] = datetime.strptime(kwargs["due_time"], "%Y-%m-%d %H:%M:%S.%f")
 
     if "tags" in kwargs and isinstance(kwargs["tags"], str):
         kwargs["tags"] = [t.strip() for t in kwargs["tags"].split(",")]
@@ -281,51 +355,67 @@ def process_options(kwargs: Dict[str, Any]) -> Dict[str, Any]:
 
 @tasks.command()
 @click.argument('task_id', required=True)
-@click.argument('data', required=True)
-def update(task_id, data):
+@click.pass_context
+@click.option('--name', type=str, help='The name of the task.')
+@click.option('--description', type=str, help='A detailed description of the task.')
+@click.option('--start-time', type=str, help='The start time of the task.')
+@click.option('--due-time', type=str, help='The due time of the task.')
+@click.option('--category-id', type=int, help='The category id of the task.')
+@click.option('--category', type=str, help='The category name of the task.')
+@click.option('--tags', type=str, help='The tags associated with the task.')
+@click.option('--priority', type=int, help='The priority of the task.')
+@click.option('--completed', help='Whether the task is completed.')
+def update(ctx, task_id, **data):
     """
     Update an existing task. The data argument should be a comma-separated list of key-value pairs.
 
     Example:
-    $ timewise tasks update 1 'name=New Name,description=New Description'
+    $ timewise tasks update 1 {'name': 'New Task Name', 'description': 'New Task Description'}
 
-    :param task_id: The id of the task to update.
-    :type task_id: str
-    :param data: The data to update the task with.
-    :type data: str
-    :return: None
+    Args:
+        ctx: The click context.
+        task_id: The id of the task to update.
+        data: The data to update the task with.
+
+    Returns:
+        None
+
+    Raises:
+        ValueError: If the category id provided is not a valid integer.
     """
-    data = [d.strip() for d in data.split(",")]
-    data = {d.split("=")[0]: d.split("=")[1] for d in data}
-
     task = get_task_by_id(int(task_id))
     if task is None:
         print(f"Task with id '{task_id}' not found.")
         return
 
     for key, value in data.items():
-        # Convert the value to the correct type
-        if key in ["start_time", "due_time", "completed"]:
-            value = datetime.strptime(value, "%Y-%m-%d %H:%M:%S.%f")
-        elif key == "tags":
-            value = [t.strip() for t in value.split(",")]
-        elif key == "priority":
-            value = int(value)
-        elif key == "category_id" or key == "category":
-            try:
+        if value is None:
+            continue
+
+        try:
+            # Convert the value to the correct type
+            if key in ["start_time", "due_time", "completed"] and value is not None:
+                value = datetime.strptime(value, "%Y-%m-%d %H:%M:%S.%f")
+            elif key == "tags":
+                value = [t.strip() for t in value.split(",")]
+            elif key == "priority":
+                value = int(value)
+            elif key == "category_id" or key == "category":
                 if isinstance(value, (int, str)) and value.isdigit():
                     value = timewise.session.query(Category).filter(Category.id == int(value)).first()
-                else:
+                elif isinstance(value, str):
                     value = timewise.session.query(Category).filter(Category.name == value).first()
-            except ValueError:
-                print(f"Invalid category id '{value}'. Please provide a valid integer.")
-                return
-            else:
-                if value is None:
-                    print(f"Category '{data[key]}' not found.")
-                    return
+                else:
+                    raise TypeError(f"{key} has to be of type (str, int) not {type(value)}")
 
-        setattr(task, key, value)
+            if not bool(value):
+                print(f"Category '{data[key]}' not found.")
+                return
+
+            setattr(task, key, value)
+        except TypeError as e:
+            expected = str(e).split("must")[-1]
+            raise TypeError(f"{key} must{expected}")
 
     timewise.session.commit()
     print(f"Task '{task.name}' updated successfully.")
@@ -404,7 +494,6 @@ def add_recurrence(task_id, interval, **kwargs):
     print(f"Recurring task added to task '{task.name}'.")
 
 
-# Add a command to delete a recurrence
 @tasks.command()
 @click.argument('recurring_id', required=True)
 def delete_recurrence(recurring_id):
@@ -428,6 +517,7 @@ def delete_recurrence(recurring_id):
     timewise.session.delete(recurring_task)
     timewise.session.commit()
     print(f"Recurring task with id '{recurring_id}' deleted successfully.")
+
 
 @tasks.command()
 @click.argument('cat', required=False)
@@ -481,11 +571,22 @@ def show_task(task_id):
 
     print_heading(f"TASK: {task.name}")
     if task.description:
-        print(f"Description: {task.description}\n")
+        desc = ("Description: " + task.description).split()
+        llength = 60
+        line = ""
+        while len(desc) > 0:
+            if len(line + desc[0]) > llength:
+                print(line)
+                line = ""
+
+            line += " " + desc.pop(0)
+
+        print(line+"\n")
 
     # Get column names to display
     task_display_columns = ["id", "category", "priority", "count", "parent_task"]
     data = [[getattr(task, column) for column in task_display_columns]]
+
     print(tabulate(data, headers=task_display_columns, tablefmt="grid"))
 
     if task.tags:
@@ -515,52 +616,10 @@ def show_task(task_id):
     if task.completed_at:
         print(f"Completed: {task.completed_at.strftime('%Y-%m-%d %H:%M:%S')}")
 
-    print(f"{'=' * 40}\n")
+    print_heading(f"END OF TASK: {task.name}")
 
 
-@click.group()
-def categories():
-    """
-    Open the categories interface. This interface allows you to manage categories through a series of subcommands.
-    """
-    pass
-
-
-@categories.command()
-@click.argument('name')
-@click.option('-d', '--description', default="", help='A detailed description of the category.')
-def add_category(name, description):
-    """
-    Add a new category.
-
-    Example:
-    $ timewise categories add-category 'Category Name' 'Category Description'
-
-    :param name: The name of the category.
-    :type name: str
-    :param description: A detailed description of the category.
-    :type description: str
-    :return: None
-    """
-    timewise.add_category(name=name, description=description)
-    print(f"Category '{name}' added successfully.")
-
-
-@categories.command()
-def list_categories():
-    """
-    List all categories.
-    """
-    task_display_format = "{:<5} {:<20} {:<20} {:<11}"
-    print(task_display_format.format("ID", "Name", "Description", "Is Active"))
-    for category in timewise.get_categories():
-        print(task_display_format.format(
-            str(category.id),
-            str(category.name),
-            str(category.description),
-            str(category.is_active)
-        ))
-
+cli.add_command(tasks)
 
 cli.add_command(tasks)
 cli.add_command(categories)

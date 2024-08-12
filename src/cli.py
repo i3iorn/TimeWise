@@ -349,14 +349,14 @@ def process_options(kwargs: Dict[str, Any]) -> Dict[str, Any]:
 @tasks.command()
 @click.argument('task_id', required=True)
 @click.pass_context
-@click.option('--name', type=str, help='The name of the task.')
-@click.option('--description', type=str, help='A detailed description of the task.')
-@click.option('--start-time', type=str, help='The start time of the task.')
-@click.option('--due-time', type=str, help='The due time of the task.')
-@click.option('--category-id', type=int, help='The category id of the task.')
-@click.option('--category', type=str, help='The category name of the task.')
-@click.option('--tags', type=str, help='The tags associated with the task.')
-@click.option('--priority', type=int, help='The priority of the task.')
+@click.option('-n', '--name', type=str, help='The name of the task.')
+@click.option('-d', '--description', type=str, help='A detailed description of the task.')
+@click.option('-s', '--start-time', type=str, help='The start time of the task.')
+@click.option('-d', '--due-time', type=str, help='The due time of the task.')
+@click.option('-c', '--category-id', type=int, help='The category id of the task.')
+@click.option('-C', '--category', type=str, help='The category name of the task.')
+@click.option('-t', '--tags', type=str, help='The tags associated with the task.')
+@click.option('-p', '--priority', type=int, help='The priority of the task.')
 @click.option('--completed', help='Whether the task is completed.')
 def update(ctx, task_id, **data):
     """

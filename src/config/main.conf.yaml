@@ -51,5 +51,5 @@ initial_values:
       value: "by_priority"
     - key: "default_sort_order"
       value: "asc"
-    - key: "default_task_display_columns"
+    - key: "default_display_columns"
       value: "id, name, description, category, priority, due_time"

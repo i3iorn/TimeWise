@@ -2,8 +2,10 @@ import logging
 import click
 
 from datetime import datetime, timedelta
+
+from sqlalchemy import select
 from tabulate import tabulate
-from typing import Dict, Any, Type
+from typing import Dict, Any, Type, Optional
 
 from src import exceptions
 from src.models.category import Category
@@ -230,7 +232,7 @@ def sort_methods() -> None:
 
 
 @tasks.command()
-@click.option('-s', '--sort-by', default="due_date", help='The method to sort the tasks by.')
+@click.option('-s', '--sort-by', default="due_time", help='The method to sort the tasks by.')
 @click.option('-c', '--columns', help='The columns to display in the task list.')
 def list(**kwargs: Dict[str, Any]) -> None:
     """
@@ -243,25 +245,16 @@ def list(**kwargs: Dict[str, Any]) -> None:
     :type kwargs: Dict[str, Any]
     :return: None
     """
-    task_display_columns = get_display_columns(kwargs.get("columns"))
+    task_display_columns = get_display_columns(kwargs.get("columns", None))
 
-    tasks = timewise.get_tasks()
+    tasks = timewise.get_tasks(sort_by=kwargs.get("sort_by", "due_time"))
+
     task_data = [[getattr(task, column) for column in task_display_columns] for task in tasks.all()]
 
     print(tabulate(task_data, headers=task_display_columns, tablefmt="grid"))
 
 
-def get_sort_method(sort_by: str) -> str:
-    sort_name = sort_by or "due_date"
-    if sort_name == "date":
-        sort_name = "due_date"
-    sort_name = sort_name.replace("-", "_").replace(" ", "_")
-    if sort_name not in timewise.sort_methods:
-        raise ValueError(f"Invalid sort method '{sort_name}'. Please use the 'sort_methods' command to see available options.")
-    return sort_name
-
-
-def get_display_columns(columns: str) -> list:
+def get_display_columns(columns: Optional[str] = None) -> list:
     if columns is None:
         columns = timewise.session.query(Settings).filter(Settings.key == "default_display_columns").one().value
     return [column.strip() for column in columns.split(",")]

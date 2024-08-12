@@ -103,6 +103,19 @@
           "description": "The default value to use if the attribute is not present.",
           "$ref": "#/$defs/value_type"
         },
+        "operator": {
+          "description": "The type of comparison to perform.",
+          "type": "string",
+          "enum": [
+            "equal",
+            "not-equal",
+            "greater-than",
+            "greater-than-or-equal",
+            "less-than",
+            "less-than-or-equal"
+          ],
+          "default": "equal"
+        },
         "nullable": {
           "description": "Whether the attribute can have a null value.",
           "type": "boolean",
@@ -110,7 +123,8 @@
         },
         "reverse": {
           "description": "Whether to reverse the sorting order.",
-          "type": "boolean"
+          "type": "boolean",
+          "default": false
         },
         "required": {
           "description": "Whether the attribute is required.",
@@ -125,6 +139,7 @@
         "weight": {
           "description": "The weight of the attribute in the sorting method.",
           "type": "number",
+          "default": 0.5,
           "minimum": 0,
           "maximum": 1
         }
@@ -132,8 +147,7 @@
       "required": [
         "name",
         "input_type",
-        "target",
-        "weight"
+        "target"
       ],
       "if": {
         "properties": {

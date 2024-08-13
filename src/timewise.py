@@ -202,7 +202,8 @@ class TimeWise:
             self,
             category: Optional[str] = None,
             tag: Optional[str] = None,
-            sort_by: Optional[str] = None
+            sort_by: Optional[str] = None,
+            include_completed: bool = False
     ) -> TaskCollection:
         """
         Get tasks from the database. Optionally filter by category and tag. Optionally sort by a specific method. A list
@@ -226,7 +227,9 @@ class TimeWise:
         if tag:
             query = query.join(Task.tags).filter(Tag.name == tag)
 
-        query = query.order_by(Task.start_time)
+        if not include_completed:
+            query = query.filter(Task.completed_at > 0)
+
         tasks = query.all()
 
         if sort_by:

@@ -234,6 +234,7 @@ def sort_methods() -> None:
 @tasks.command()
 @click.option('-s', '--sort-by', default="due_time", help='The method to sort the tasks by.')
 @click.option('-c', '--columns', help='The columns to display in the task list.')
+@click.option('--include-completed', is_flag=True, help='Include completed tasks in the list.')
 def list(**kwargs: Dict[str, Any]) -> None:
     """
     List all tasks. Optionally, sort the tasks by a specific method.
@@ -247,7 +248,7 @@ def list(**kwargs: Dict[str, Any]) -> None:
     """
     task_display_columns = get_display_columns(kwargs.get("columns", None))
 
-    tasks = timewise.get_tasks(sort_by=kwargs.get("sort_by", "due_time"))
+    tasks = timewise.get_tasks(sort_by=kwargs.get("sort_by", "due_time"), include_completed=kwargs.get("include_completed", False))
 
     task_data = [[getattr(task, column) for column in task_display_columns] for task in tasks.all()]
 
@@ -542,6 +543,29 @@ def delete(cat, **kwargs):
     if task:
         timewise.delete_task(task)
         print(f"Task '{task.name}' deleted successfully.")
+
+
+@tasks.command()
+@click.argument('task_id')
+def complete(task_id):
+    """
+    Mark a task as completed.
+
+    Example:
+    $ timewise tasks complete 1
+
+    :param task_id: The id of the task to complete.
+    :type task_id: str
+    :return: None
+    """
+    task = get_task_by_id(int(task_id))
+    if task is None:
+        print(f"Task with id '{task_id}' not found.")
+        return
+
+    task.completed_at = datetime.now()
+    timewise.session.commit()
+    print(f"Task '{task.name}' marked as completed.")
 
 
 @tasks.command()
